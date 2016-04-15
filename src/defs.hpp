@@ -1,0 +1,63 @@
+#ifndef DEFS_HPP_INCLUDED
+#define DEFS_HPP_INCLUDED
+
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
+#include <assert.h>
+
+#include <iostream>
+#include <string>
+#include <vector>
+#include <cstdlib>
+#include <cmath>
+#include <fstream>
+#include <sstream>
+#include <streambuf>
+#include <time.h>
+
+#define RAND_BETWEEN(a, b) ((float)rand()/RAND_MAX*(b-a) + a)
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+#define CLAMP(x, a, b) ((x) < (a) ? (x)=(a) : ((x) > (b) ? (x)=(b) : 0))
+
+#define NUM_PAINTINGS 16
+
+typedef struct
+{
+  int w;
+  int h;
+  unsigned char *data;
+} s_texture;
+
+typedef struct
+{
+  GLuint fbo;
+  GLuint texture_id;
+  
+  float r;
+  float g;
+  float b;
+  
+  int num_triangles;
+  float likeness;
+  std::vector<GLfloat> positions;
+  std::vector<GLfloat> colours;
+  std::vector<GLfloat> uvs;
+} s_painting;
+
+// paintings.cpp
+int painting_init(s_painting* p, int w, int h);
+int painting_jiggle(s_painting* p);
+int painting_copy(s_painting* dest, s_painting* src);
+
+// io.cpp
+int load_bmp(s_texture* texture, const char *filename);
+
+// callbacks.cpp
+void glfw_window_size_callback(GLFWwindow* window, int width, int height);
+void glfw_cursor_position_callback(GLFWwindow* window, double xpos, double ypos);
+void glfw_mouse_scroll_callback(GLFWwindow* window, double xoffset, double yoffset);
+void glfw_keyboard_callback(GLFWwindow* window, int key, int scancode, int action, int mods);
+void glfw_mouse_button_callback(GLFWwindow* window, int button, int action, int mods);
+
+#endif // DEFS_HPP_INCLUDED
