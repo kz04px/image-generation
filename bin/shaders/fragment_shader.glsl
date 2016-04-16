@@ -1,10 +1,11 @@
 #version 430
 
+uniform sampler2D my_texture;
+
 layout(location = 0) in vec4 colour;
 layout(location = 1) in vec2 uv;
-layout(location = 0) out vec4 FragColor;
 
-uniform sampler2D my_texture;
+layout(location = 0) out vec4 FragColor;
 
 void main()
 {

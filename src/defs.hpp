@@ -34,9 +34,9 @@ typedef struct
   GLuint fbo;
   GLuint texture_id;
   
-  float r;
-  float g;
-  float b;
+  GLfloat r;
+  GLfloat g;
+  GLfloat b;
   
   int num_triangles;
   float likeness;

@@ -43,6 +43,23 @@ int painting_jiggle(s_painting* p)
     p->colours[9*t+6] += dr;
     p->colours[9*t+7] += dg;
     p->colours[9*t+8] += db;
+
+    CLAMP(p->positions[6*t+0], 0.0, 1.0);
+    CLAMP(p->positions[6*t+1], 0.0, 1.0);
+    CLAMP(p->positions[6*t+2], 0.0, 1.0);
+    CLAMP(p->positions[6*t+3], 0.0, 1.0);
+    CLAMP(p->positions[6*t+4], 0.0, 1.0);
+    CLAMP(p->positions[6*t+5], 0.0, 1.0);
+
+    CLAMP(p->colours[9*t+0], 0.0, 1.0);
+    CLAMP(p->colours[9*t+1], 0.0, 1.0);
+    CLAMP(p->colours[9*t+2], 0.0, 1.0);
+    CLAMP(p->colours[9*t+3], 0.0, 1.0);
+    CLAMP(p->colours[9*t+4], 0.0, 1.0);
+    CLAMP(p->colours[9*t+5], 0.0, 1.0);
+    CLAMP(p->colours[9*t+6], 0.0, 1.0);
+    CLAMP(p->colours[9*t+7], 0.0, 1.0);
+    CLAMP(p->colours[9*t+8], 0.0, 1.0);
   }
   
   return 0;
@@ -53,20 +70,36 @@ int painting_copy(s_painting* dest, s_painting* src)
   assert(dest != NULL);
   assert(src != NULL);
 
+  dest->r = src->r;
+  dest->g = src->g;
+  dest->b = src->b;
+
   for(int i = 0; i < src->num_triangles; ++i)
   {
     // Positions
-    dest->positions[3*i+0] = src->positions[3*i+0];
-    dest->positions[3*i+1] = src->positions[3*i+1];
-    dest->positions[3*i+2] = src->positions[3*i+2];
+    dest->positions[6*i+0] = src->positions[6*i+0];
+    dest->positions[6*i+1] = src->positions[6*i+1];
+    dest->positions[6*i+2] = src->positions[6*i+2];
+    dest->positions[6*i+3] = src->positions[6*i+3];
+    dest->positions[6*i+4] = src->positions[6*i+4];
+    dest->positions[6*i+5] = src->positions[6*i+5];
     // Colours
-    dest->colours[3*i+0] = src->colours[3*i+0];
-    dest->colours[3*i+1] = src->colours[3*i+1];
-    dest->colours[3*i+2] = src->colours[3*i+2];
+    dest->colours[9*i+0] = src->colours[9*i+0];
+    dest->colours[9*i+1] = src->colours[9*i+1];
+    dest->colours[9*i+2] = src->colours[9*i+2];
+    dest->colours[9*i+3] = src->colours[9*i+3];
+    dest->colours[9*i+4] = src->colours[9*i+4];
+    dest->colours[9*i+5] = src->colours[9*i+5];
+    dest->colours[9*i+6] = src->colours[9*i+6];
+    dest->colours[9*i+7] = src->colours[9*i+7];
+    dest->colours[9*i+8] = src->colours[9*i+8];
     // uvs
-    dest->uvs[3*i+0] = src->uvs[3*i+0];
-    dest->uvs[3*i+1] = src->uvs[3*i+1];
-    dest->uvs[3*i+2] = src->uvs[3*i+2];
+    dest->uvs[6*i+0] = src->uvs[6*i+0];
+    dest->uvs[6*i+1] = src->uvs[6*i+1];
+    dest->uvs[6*i+2] = src->uvs[6*i+2];
+    dest->uvs[6*i+3] = src->uvs[6*i+3];
+    dest->uvs[6*i+4] = src->uvs[6*i+4];
+    dest->uvs[6*i+5] = src->uvs[6*i+5];
   }
 
   return 0;
@@ -113,7 +146,7 @@ int painting_init(s_painting* p, int w, int h)
   
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   
-  p->num_triangles = 12;
+  p->num_triangles = 1;
   p->likeness = 0.0;
   
   p->r = RAND_BETWEEN(0.0, 1.0);

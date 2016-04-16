@@ -209,7 +209,7 @@ int main()
   /**** side by side view ****/
   
   
-  const int num_paintings = 8;
+  const int num_paintings = 32;
   
   std::vector<GLfloat> scores(num_paintings);
   for(int i = 0; i < num_paintings; ++i)
@@ -305,7 +305,8 @@ int main()
       // draw
       glDrawArrays(GL_TRIANGLES, 0, 3*paintings[p].num_triangles);
     }
-    
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
     
     // Reset scores
     for(unsigned int i = 0; i < scores.size(); ++i)
@@ -316,44 +317,15 @@ int main()
     glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLfloat)*num_paintings, &scores[0], GL_DYNAMIC_DRAW); // GL_STATIC_DRAW
     
 
-
-    // Compute scores
-    glBindVertexArray(vao_compute);
-
-    glActiveTexture(GL_TEXTURE0);
-    glUseProgram(similarity_program);
-
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, texture);
-
-    // setup uniforms
-    glUniform1i(0, texture);
-
-    // target 255, 201, 14
-
-    GLubyte meh[624*400*3];
-    glGetTexImage(GL_TEXTURE_2D, 0, GL_RGB, GL_UNSIGNED_BYTE, meh);
-    //std::cout << int(meh[0]) << " " << int(meh[1]) << " " << int(meh[2]) << std::endl;
-
-    // Compute
-    int groups_x = input.w/16;
-    int groups_y = input.h/16;
-    glDispatchCompute(groups_x, groups_y, 1);
-
-    // Get scores
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, scores_bo);
-    glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, num_paintings*sizeof(scores[0]), &scores[0]);
-
-    /*
     // Comparisons
     for(int i = 0; i < num_paintings; ++i)
     {
       glUseProgram(similarity_program);
       
-      glActiveTexture(GL_TEXTURE0);
+      glActiveTexture(GL_TEXTURE0 + texture);
       glBindTexture(GL_TEXTURE_2D, texture);
       
-      glActiveTexture(GL_TEXTURE1);
+      glActiveTexture(GL_TEXTURE0 + paintings[i].texture_id);
       glBindTexture(GL_TEXTURE_2D, paintings[i].texture_id);
       
       // setup uniforms
@@ -371,32 +343,29 @@ int main()
     // Get scores
     glBindBuffer(GL_SHADER_STORAGE_BUFFER, scores_bo);
     glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, num_paintings*sizeof(scores[0]), &scores[0]);
-    */
     
 
     // Print scores
-    for(unsigned int i = 0; i < scores.size() && i < 6; ++i)
+    for(unsigned int i = 0; i < scores.size() && i < 8; ++i)
     {
-      std::cout << scores[i] << " ";
+      //std::cout << scores[i] << " ";
     }
-    std::cout << std::endl;
+    //std::cout << std::endl;
     
     
     // Find best painting
     int best_painting = -1;
-    //float best_score = 1E10;
-    float best_score = -1.0;
+    float best_score = 1E10;
     for(int p = 0; p < num_paintings; ++p)
     {
-      //if(scores[p] < best_score)
-      if(scores[p] >= best_score)
+      if(scores[p] < best_score)
       {
         best_painting = p;
         best_score = scores[p];
       }
     }
     assert(best_painting != -1);
-    //assert(best_score < 1E10);
+    assert(best_score < 1E10);
     
 
     // Create new paintings from best
@@ -404,16 +373,16 @@ int main()
     {
       if(p == best_painting) {continue;}
       
-      //painting_copy(&paintings[p], &paintings[best_painting]);
+      painting_copy(&paintings[p], &paintings[best_painting]);
     }
     
     
     // Mutate paintings
     for(int p = 0; p < num_paintings; ++p)
     {
-      if(p == best_painting) {continue;}
+      //if(p == best_painting) {continue;}
       
-      //painting_jiggle(&paintings[p]);
+      painting_jiggle(&paintings[p]);
     }
     
 
@@ -469,7 +438,7 @@ int main()
     // Print scores occasionally
     if(gen%100 == 0)
     {
-      std::cout << "Gen " << gen << ": " << best_painting << " - " << best_score << std::endl;
+      std::cout << "Gen " << gen << ": " << best_painting << " - " << 100.0 - 100.0*best_score/(input.w * input.h * 3 * 0.25) << "%" << std::endl;
     }
     
     gen++;
