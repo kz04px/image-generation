@@ -146,8 +146,8 @@ int painting_init(s_painting* p, int w, int h)
   
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   
-  p->num_triangles = 1;
-  p->likeness = 0.0;
+  p->num_triangles = 64;
+  p->score = 0.0;
   
   p->r = RAND_BETWEEN(0.0, 1.0);
   p->g = RAND_BETWEEN(0.0, 1.0);

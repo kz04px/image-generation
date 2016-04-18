@@ -14,6 +14,7 @@
 #include <sstream>
 #include <streambuf>
 #include <time.h>
+#include <float.h>
 
 #define RAND_BETWEEN(a, b) ((float)rand()/RAND_MAX*(b-a) + a)
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -39,11 +40,19 @@ typedef struct
   GLfloat b;
   
   int num_triangles;
-  float likeness;
+  float score;
   std::vector<GLfloat> positions;
   std::vector<GLfloat> colours;
   std::vector<GLfloat> uvs;
 } s_painting;
+
+typedef struct
+{
+  int w;
+  int h;
+  bool tiled_view;
+  bool paused;
+} s_settings;
 
 // paintings.cpp
 int painting_init(s_painting* p, int w, int h);
@@ -51,7 +60,9 @@ int painting_jiggle(s_painting* p);
 int painting_copy(s_painting* dest, s_painting* src);
 
 // io.cpp
-int load_bmp(s_texture* texture, const char *filename);
+int bmp_load(s_texture* texture, const char *filename);
+int bmp_save_n(int n, const char *filename);
+std::string shader_load(const char* filename);
 
 // callbacks.cpp
 void glfw_window_size_callback(GLFWwindow* window, int width, int height);

@@ -6,17 +6,6 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/random.hpp>
 
-int window_width;
-int window_height;
-
-std::string shader_load(const char* filename)
-{
-  std::ifstream t(filename);
-  std::stringstream buffer;
-  buffer << t.rdbuf();
-  return buffer.str();
-}
-
 bool check_shader_compile_status(GLuint obj)
 {
   GLint status;
@@ -52,8 +41,12 @@ bool check_program_link_status(GLuint obj)
 int main()
 {
   srand(time(0));
-  window_width = 960;
-  window_height = 480;
+
+  s_settings settings;
+  settings.w = 960;
+  settings.h = 480;
+  settings.tiled_view = true;
+  settings.paused = false;
 
   if(glfwInit() == GL_FALSE)
   {
@@ -68,12 +61,14 @@ int main()
 
   // create a window
   GLFWwindow *window;
-  if((window = glfwCreateWindow(window_width, window_height, "Painting Evolution", 0, 0)) == 0)
+  if((window = glfwCreateWindow(settings.w, settings.h, "Painting Evolution", 0, 0)) == 0)
   {
     std::cerr << "Failed to open window" << std::endl;
     glfwTerminate();
     return 1;
   }
+
+  glfwSetWindowUserPointer(window, &settings);
 
   glfwMakeContextCurrent(window);
   glfwSetWindowSizeCallback(window, glfw_window_size_callback);
@@ -208,15 +203,24 @@ int main()
   glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, (char*)0 + 0*sizeof(GLfloat));
   /**** side by side view ****/
   
+
+  // Create target texture
+  s_texture input;
+  bmp_load(&input, "input.bmp");
+
+  const int num_paintings = 36;
   
-  const int num_paintings = 32;
-  
-  std::vector<GLfloat> scores(num_paintings);
-  for(int i = 0; i < num_paintings; ++i)
+  s_painting paintings[num_paintings];
+  for(int p = 0; p < num_paintings; ++p)
   {
-    scores[i] = 0.0;
+    painting_init(&paintings[p], input.w, input.h);
   }
   
+  int num_workgroups = input.w*input.h/16/16;
+  std::vector<GLfloat> scores(num_workgroups);
+  std::cout << "Num workgroups: " << num_workgroups << std::endl;
+  
+
   // generate vao_compute and scores_bo
   GLuint vao_compute, scores_bo;
   
@@ -225,19 +229,14 @@ int main()
   
   glGenBuffers(1, &scores_bo);
   glBindBuffer(GL_SHADER_STORAGE_BUFFER, scores_bo);
-  glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLfloat)*num_paintings, &scores[0], GL_DYNAMIC_DRAW); // GL_STATIC_DRAW
   
   // set up generic attrib pointers
   glEnableVertexAttribArray(0);
-  glVertexAttribPointer(0, 1, GL_FLOAT, GL_FALSE, sizeof(GLfloat), (char*)0 + 0*sizeof(GLfloat));
   
 	const GLuint ssbos[] = {scores_bo};
   //glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, 0, 1, ssbos);
   glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbos[0]);
-  
-  // Create target texture
-  s_texture input;
-  load_bmp(&input, "input.bmp");
+  glBufferData(GL_SHADER_STORAGE_BUFFER, num_workgroups*sizeof(scores[0]), &scores[0], GL_DYNAMIC_DRAW); // GL_STATIC_DRAW
   
   GLuint texture = 0;
   glGenTextures(1, &texture);
@@ -248,146 +247,149 @@ int main()
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
   glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, input.w, input.h, 0, GL_RGB, GL_UNSIGNED_BYTE, input.data);
-  
-  //std::cout << int(input.data[0]) << " " << int(input.data[1]) << " " << int(input.data[2]) << std::endl;
-  //std::cout << int(input.data[0])/255.0 << " " << int(input.data[1])/255.0 << " " << int(input.data[2])/255.0 << std::endl;
-  //getchar();
 
   glPointSize(2.0);
-  
+
   GLuint query;
   glGenQueries(1, &query);
-  
-  s_painting paintings[num_paintings];
-  // Init paintings
-  for(int p = 0; p < num_paintings; ++p)
-  {
-    painting_init(&paintings[p], input.w, input.h);
-  }
 
-  GLubyte *data = new GLubyte[3*input.w*input.h];
+  int best_painting = -1;
+  float best_score = FLT_MAX;
 
   int gen = 0;
   while(!glfwWindowShouldClose(window))
   {
-    glfwPollEvents();
     glBeginQuery(GL_TIME_ELAPSED, query);
-    
-    // Draw paintings
-    for(int p = 0; p < num_paintings; ++p)
-    {
-      glBindFramebuffer(GL_FRAMEBUFFER, paintings[p].fbo);
-      glClearColor(paintings[p].r, paintings[p].g, paintings[p].b, 1.0);
-      glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-      
-      // bind the current vao
-      glBindVertexArray(vao);
-      
-      // Vertices
-      glBindBuffer(GL_ARRAY_BUFFER, vbo);
-      glBufferData(GL_ARRAY_BUFFER, 2 * 3 * paintings[p].num_triangles * sizeof(GLfloat), &paintings[p].positions[0], GL_STATIC_DRAW);
-      
-      // Colours
-      glBindBuffer(GL_ARRAY_BUFFER, cbo);
-      glBufferData(GL_ARRAY_BUFFER, 3 * 3 * paintings[p].num_triangles * sizeof(GLfloat), &paintings[p].colours[0], GL_STATIC_DRAW);
-      
-      // Texture coords
-      glBindBuffer(GL_ARRAY_BUFFER, uvbo);
-      glBufferData(GL_ARRAY_BUFFER, 2 * 3 * paintings[p].num_triangles * sizeof(GLfloat), &paintings[p].uvs[0], GL_STATIC_DRAW);
-      
-      // use the shader program
-      glUseProgram(shader_program);
-      
-      // set the uniforms
-      glm::mat4 view = glm::ortho(0.0, 1.0, 0.0, 1.0, -1.0, 1.0);
-      glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(view));
-      
-      // draw
-      glDrawArrays(GL_TRIANGLES, 0, 3*paintings[p].num_triangles);
-    }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     
-    // Reset scores
-    for(unsigned int i = 0; i < scores.size(); ++i)
+    if(settings.paused == false)
     {
-      scores[i] = 0;
-    }
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, scores_bo);
-    glBufferData(GL_SHADER_STORAGE_BUFFER, sizeof(GLfloat)*num_paintings, &scores[0], GL_DYNAMIC_DRAW); // GL_STATIC_DRAW
-    
-
-    // Comparisons
-    for(int i = 0; i < num_paintings; ++i)
-    {
-      glUseProgram(similarity_program);
-      
-      glActiveTexture(GL_TEXTURE0 + texture);
-      glBindTexture(GL_TEXTURE_2D, texture);
-      
-      glActiveTexture(GL_TEXTURE0 + paintings[i].texture_id);
-      glBindTexture(GL_TEXTURE_2D, paintings[i].texture_id);
-      
-      // setup uniforms
-      glUniform1i(0, texture);
-      glUniform1i(1, paintings[i].texture_id);
-      glUniform1i(2, i);
-
-      // Compute
-      int groups_x = input.w/16;
-      int groups_y = input.h/16;
-      glDispatchCompute(groups_x, groups_y, 1);
-    }
-    glActiveTexture(GL_TEXTURE0);
-
-    // Get scores
-    glBindBuffer(GL_SHADER_STORAGE_BUFFER, scores_bo);
-    glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, num_paintings*sizeof(scores[0]), &scores[0]);
-    
-
-    // Print scores
-    for(unsigned int i = 0; i < scores.size() && i < 8; ++i)
-    {
-      //std::cout << scores[i] << " ";
-    }
-    //std::cout << std::endl;
-    
-    
-    // Find best painting
-    int best_painting = -1;
-    float best_score = 1E10;
-    for(int p = 0; p < num_paintings; ++p)
-    {
-      if(scores[p] < best_score)
+      glViewport(0, 0, input.w, input.h);
+      // Draw paintings
+      for(int p = 0; p < num_paintings; ++p)
       {
-        best_painting = p;
-        best_score = scores[p];
+        glBindFramebuffer(GL_FRAMEBUFFER, paintings[p].fbo);
+        glClearColor(paintings[p].r, paintings[p].g, paintings[p].b, 1.0);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        // bind the current vao
+        glBindVertexArray(vao);
+        
+        // Vertices
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glBufferData(GL_ARRAY_BUFFER, 2 * 3 * paintings[p].num_triangles * sizeof(GLfloat), &paintings[p].positions[0], GL_STATIC_DRAW);
+        
+        // Colours
+        glBindBuffer(GL_ARRAY_BUFFER, cbo);
+        glBufferData(GL_ARRAY_BUFFER, 3 * 3 * paintings[p].num_triangles * sizeof(GLfloat), &paintings[p].colours[0], GL_STATIC_DRAW);
+        
+        // Texture coords
+        glBindBuffer(GL_ARRAY_BUFFER, uvbo);
+        glBufferData(GL_ARRAY_BUFFER, 2 * 3 * paintings[p].num_triangles * sizeof(GLfloat), &paintings[p].uvs[0], GL_STATIC_DRAW);
+        
+        // use the shader program
+        glUseProgram(shader_program);
+        
+        // set the uniforms
+        glm::mat4 view = glm::ortho(0.0, 1.0, 0.0, 1.0, -1.0, 1.0);
+        glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(view));
+        
+        // draw
+        glDrawArrays(GL_TRIANGLES, 0, 3*paintings[p].num_triangles);
       }
-    }
-    assert(best_painting != -1);
-    assert(best_score < 1E10);
-    
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+      glViewport(0, 0, settings.w, settings.h);
 
-    // Create new paintings from best
-    for(int p = 0; p < num_paintings; ++p)
-    {
-      if(p == best_painting) {continue;}
+      // Comparisons
+      for(int p = 0; p < num_paintings; ++p)
+      {
+        glUseProgram(similarity_program);
+        
+        glActiveTexture(GL_TEXTURE0 + texture);
+        glBindTexture(GL_TEXTURE_2D, texture);
+        
+        glActiveTexture(GL_TEXTURE0 + paintings[p].texture_id);
+        glBindTexture(GL_TEXTURE_2D, paintings[p].texture_id);
+        
+        // setup uniforms
+        glUniform1i(0, texture);
+        glUniform1i(1, paintings[p].texture_id);
+        glUniform1i(2, p);
+
+        // Compute
+        int groups_x = input.w/16;
+        int groups_y = input.h/16;
+        glDispatchCompute(groups_x, groups_y, 1);
+
+        // Get scores
+        glBindBuffer(GL_SHADER_STORAGE_BUFFER, scores_bo);
+        glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, num_workgroups*sizeof(scores[0]), &scores[0]);
+
+        // Calculate score
+        paintings[p].score = 0.0;
+        for(int n = 0; n < num_workgroups; ++n)
+        {
+          paintings[p].score += scores[n];
+        }
+      }
+      glActiveTexture(GL_TEXTURE0);
       
-      painting_copy(&paintings[p], &paintings[best_painting]);
-    }
-    
-    
-    // Mutate paintings
-    for(int p = 0; p < num_paintings; ++p)
-    {
-      //if(p == best_painting) {continue;}
       
-      painting_jiggle(&paintings[p]);
+      // Find best painting
+      best_painting = -1;
+      best_score = FLT_MAX;
+      for(int p = 0; p < num_paintings; ++p)
+      {
+        if(paintings[p].score<= best_score)
+        {
+          best_painting = p;
+          best_score = paintings[p].score;
+        }
+      }
+      assert(best_painting != -1);
+      assert(best_score >= 0.0);
+      
+
+      // Create new paintings from best
+      for(int p = 0; p < num_paintings; ++p)
+      {
+        if(p == best_painting) {continue;}
+        
+        painting_copy(&paintings[p], &paintings[best_painting]);
+      }
+      
+      
+      // Mutate paintings
+      for(int p = 0; p < num_paintings; ++p)
+      {
+        if(p == best_painting) {continue;}
+        
+        painting_jiggle(&paintings[p]);
+      }
+      
+
+      // Print scores occasionally
+      if(gen%100 == 0)
+      {
+        std::cout << "Gen " << gen << ": " << best_painting << " - " << (1.0 - best_score/(input.w * input.h * 3))*100.0 << "%" << std::endl;
+
+        /*
+        // Print scores
+        for(int p = 0; p < num_paintings && p < 8; ++p)
+        {
+          std::cout << paintings[p].score << " ";
+        }
+        std::cout << std::endl;
+        std::cout << std::endl;
+        */
+      }
+      
+      gen++;
     }
-    
 
     // Render target and best paintings
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glClearColor(0.0, 0.0, 0.0, 1.0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     
     glBindVertexArray(vao);
@@ -419,29 +421,57 @@ int main()
     glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat), &uvs, GL_STATIC_DRAW);
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
     
-    // Render best match to the screen
-    glBindTexture(GL_TEXTURE_2D, paintings[best_painting].texture_id);
-    positions[0] = 0.0;
-    positions[2] = 0.0;
-    positions[4] = 1.0;
-    positions[6] = 1.0;
-    glBindBuffer(GL_ARRAY_BUFFER, vbo);
-    glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat), &positions, GL_STATIC_DRAW);
-    glBindBuffer(GL_ARRAY_BUFFER, cbo);
-    glBufferData(GL_ARRAY_BUFFER, 12 * sizeof(GLfloat), &colours, GL_STATIC_DRAW);
-    glBindBuffer(GL_ARRAY_BUFFER, uvbo);
-    glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat), &uvs, GL_STATIC_DRAW);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
-    
-    glfwSwapBuffers(window);
-
-    // Print scores occasionally
-    if(gen%100 == 0)
+    if(settings.tiled_view == true)
     {
-      std::cout << "Gen " << gen << ": " << best_painting << " - " << 100.0 - 100.0*best_score/(input.w * input.h * 3 * 0.25) << "%" << std::endl;
+      int x_num = ceil(sqrt(num_paintings));
+      int y_num = ceil(sqrt(num_paintings));
+
+      if(x_num*(y_num-1) >= num_paintings)
+      {
+        y_num -= 1;
+      }
+
+      float width  = 1.0/x_num;
+      float height = 1.0/y_num;
+      
+      for(int y = 0; y < y_num; ++y)
+      {
+        for(int x = 0; x < x_num; ++x)
+        {
+          if(y*x_num + x >= num_paintings) {break;}
+          
+          glBindTexture(GL_TEXTURE_2D, paintings[y*y_num + x].texture_id);
+          positions[0] = x*width;     positions[1] = y*height;
+          positions[2] = x*width;     positions[3] = (y+1)*height;
+          positions[4] = (x+1)*width; positions[5] = (y+1)*height;
+          positions[6] = (x+1)*width; positions[7] = y*height;
+          glBindBuffer(GL_ARRAY_BUFFER, vbo);
+          glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat), &positions, GL_STATIC_DRAW);
+          glBindBuffer(GL_ARRAY_BUFFER, cbo);
+          glBufferData(GL_ARRAY_BUFFER, 12 * sizeof(GLfloat), &colours, GL_STATIC_DRAW);
+          glBindBuffer(GL_ARRAY_BUFFER, uvbo);
+          glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat), &uvs, GL_STATIC_DRAW);
+          glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+        }
+      }
     }
-    
-    gen++;
+    else
+    {
+      glBindTexture(GL_TEXTURE_2D, paintings[best_painting].texture_id);
+      positions[0] = 0.0;
+      positions[2] = 0.0;
+      positions[4] = 1.0;
+      positions[6] = 1.0;
+      glBindBuffer(GL_ARRAY_BUFFER, vbo);
+      glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat), &positions, GL_STATIC_DRAW);
+      glBindBuffer(GL_ARRAY_BUFFER, cbo);
+      glBufferData(GL_ARRAY_BUFFER, 12 * sizeof(GLfloat), &colours, GL_STATIC_DRAW);
+      glBindBuffer(GL_ARRAY_BUFFER, uvbo);
+      glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat), &uvs, GL_STATIC_DRAW);
+      glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    }
+
+    glfwSwapBuffers(window);
     
     // check for errors
     GLenum error = glGetError();
@@ -457,9 +487,9 @@ int main()
     std::stringstream tmp;
     tmp << "Painting Evolution: " << int(1e9/result) << " FPS";
     glfwSetWindowTitle(window, tmp.str().c_str());
-  }
 
-  delete data;
+    glfwPollEvents();
+  }
 
   // delete the created objects
   glDeleteVertexArrays(1, &vao);

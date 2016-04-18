@@ -1,12 +1,6 @@
 #version 430
 
-/*
-1280 - GL_INVALID_ENUM
-1281 - GL_INVALID_VALUE
-1282 - GL_INVALID_OPERATION
-*/
-
-layout(local_size_x=256) in;
+layout(local_size_x=16, local_size_y=16) in;
 
 layout(location = 0) uniform sampler2D targetTexture;
 layout(location = 1) uniform sampler2D currentTexture;
@@ -17,47 +11,27 @@ shared float tmp[gl_WorkGroupSize.x * gl_WorkGroupSize.y];
 
 void main()
 {
-  /*
-  scores[0] = texture(targetTexture, vec2(0, 0)).r * 255;
-  scores[1] = texture(targetTexture, vec2(0, 0)).g * 255;
-  scores[2] = texture(targetTexture, vec2(0, 0)).b * 255;
-
-  scores[3] = -1.0;
-
-  scores[4] = texture(currentTexture, vec2(0, 0)).r * 255;
-  scores[5] = texture(currentTexture, vec2(0, 0)).g * 255;
-  scores[6] = texture(currentTexture, vec2(0, 0)).b * 255;
-
-  scores[7] = -1.0;
-  */
-
+  float xPos = float(gl_WorkGroupID.x*gl_WorkGroupSize.x + gl_LocalInvocationID.x)/(gl_NumWorkGroups.x*gl_WorkGroupSize.x);
+  float yPos = float(gl_WorkGroupID.y*gl_WorkGroupSize.y + gl_LocalInvocationID.y)/(gl_NumWorkGroups.y*gl_WorkGroupSize.y);
+  vec2 pos = vec2(xPos, yPos);
   
-  uint startX = gl_WorkGroupID.x*16;
-  uint startY = gl_WorkGroupID.y*16;
-  
-  vec3 dif_sum = vec3(0, 0, 0);
-  
-  for(uint x = 0; x < 16; x += 2)
-  {
-    for(uint y = 0; y < 16; y += 2)
-    {
-      vec3 dif = texture(targetTexture, vec2(startX + x, startY + y)).rgb - texture(currentTexture, vec2(startX + x, startY + y)).rgb;
-      dif_sum += abs(dif.x) + abs(dif.y) + abs(dif.z);
-    }
-  }
+  vec4 dif = texture(targetTexture, pos) - texture(currentTexture, pos);
+  float dif_sum = abs(dif.x) + abs(dif.y) + abs(dif.z);
 
-  tmp[gl_WorkGroupID.y*16 + gl_WorkGroupID.x] = abs(dif_sum.x) + abs(dif_sum.y) + abs(dif_sum.z);
+  tmp[gl_WorkGroupSize.x*gl_LocalInvocationID.y + gl_LocalInvocationID.x] = dif_sum;
 
   barrier();
-  groupMemoryBarrier();
+  //groupMemoryBarrier();
 
-  if(gl_WorkGroupID.x == 0 && gl_WorkGroupID.y == 0)
+  if(gl_LocalInvocationID.x == 0 && gl_LocalInvocationID.y == 0)
   {
-    scores[id] = 0.0;
+    float total = 0.0;
 
     for(int i = 0; i < gl_WorkGroupSize.x * gl_WorkGroupSize.y; ++i)
     {
-      scores[id] += abs(dif_sum.x) + abs(dif_sum.y) + abs(dif_sum.z);
+      total += tmp[i];
     }
+
+    scores[gl_WorkGroupID.y*gl_NumWorkGroups.x + gl_WorkGroupID.x] = total;
   }
 }
