@@ -45,7 +45,7 @@ void glfw_keyboard_callback(GLFWwindow* window, int key, int scancode, int actio
       break;
     case GLFW_KEY_F2:
       //bmp_save_n(1, "test1.bmp");
-      bmp_save_n(2, "result.bmp");
+      bmp_save_n(settings->best_painting, "result.bmp");
       break;
     case GLFW_KEY_SPACE:
       settings->paused = !settings->paused;

@@ -6,7 +6,13 @@
 int painting_jiggle(s_painting* p)
 {
   assert(p != NULL);
-  
+
+  /*
+   * 1/10 - Full mutate
+   * 2/10 - Jiggle
+   */
+
+  #ifdef BACKGROUNDS
   p->r += RAND_BETWEEN(-MUTATE_RATE_COL, MUTATE_RATE_COL);
   p->g += RAND_BETWEEN(-MUTATE_RATE_COL, MUTATE_RATE_COL);
   p->b += RAND_BETWEEN(-MUTATE_RATE_COL, MUTATE_RATE_COL);
@@ -14,8 +20,45 @@ int painting_jiggle(s_painting* p)
   CLAMP(p->r, 0.0, 1.0);
   CLAMP(p->g, 0.0, 1.0);
   CLAMP(p->b, 0.0, 1.0);
-  
-  for(int t = 0; t < p->num_triangles; ++t)
+  #endif
+
+  int t = rand()%p->num_triangles;
+
+  if(rand()%10 == 0)
+  {
+    // Position 1
+    p->positions[6*t+0] = RAND_BETWEEN(0.0, 1.0);
+    p->positions[6*t+1] = RAND_BETWEEN(0.0, 1.0);
+    // Position 2
+    p->positions[6*t+2] = RAND_BETWEEN(0.0, 1.0);
+    p->positions[6*t+3] = RAND_BETWEEN(0.0, 1.0);
+    // Position 3
+    p->positions[6*t+4] = RAND_BETWEEN(0.0, 1.0);
+    p->positions[6*t+5] = RAND_BETWEEN(0.0, 1.0);
+
+    CLAMP(p->positions[6*t+2], p->positions[6*t+0] - 0.1, p->positions[6*t+0] + 0.1);
+    CLAMP(p->positions[6*t+3], p->positions[6*t+1] - 0.1, p->positions[6*t+1] + 0.1);
+    CLAMP(p->positions[6*t+4], p->positions[6*t+0] - 0.1, p->positions[6*t+0] + 0.1);
+    CLAMP(p->positions[6*t+5], p->positions[6*t+1] - 0.1, p->positions[6*t+1] + 0.1);
+
+    GLfloat dr = RAND_BETWEEN(0.0, 1.0);
+    GLfloat dg = RAND_BETWEEN(0.0, 1.0);
+    GLfloat db = RAND_BETWEEN(0.0, 1.0);
+    
+    // Colour 1
+    p->colours[9*t+0] = dr;
+    p->colours[9*t+1] = dg;
+    p->colours[9*t+2] = db;
+    // Colour 2
+    p->colours[9*t+3] = dr;
+    p->colours[9*t+4] = dg;
+    p->colours[9*t+5] = db;
+    // Colour 3
+    p->colours[9*t+6] = dr;
+    p->colours[9*t+7] = dg;
+    p->colours[9*t+8] = db;
+  }
+  else if(rand()%3 == 0)
   {
     GLfloat dr = RAND_BETWEEN(-MUTATE_RATE_COL, MUTATE_RATE_COL);
     GLfloat dg = RAND_BETWEEN(-MUTATE_RATE_COL, MUTATE_RATE_COL);
@@ -30,7 +73,7 @@ int painting_jiggle(s_painting* p)
     // Position 3
     p->positions[6*t+4] += RAND_BETWEEN(-MUTATE_RATE_POS, MUTATE_RATE_POS);
     p->positions[6*t+5] += RAND_BETWEEN(-MUTATE_RATE_POS, MUTATE_RATE_POS);
-    
+
     // Colour 1
     p->colours[9*t+0] += dr;
     p->colours[9*t+1] += dg;
@@ -43,6 +86,15 @@ int painting_jiggle(s_painting* p)
     p->colours[9*t+6] += dr;
     p->colours[9*t+7] += dg;
     p->colours[9*t+8] += db;
+
+    /*
+    CLAMP(p->positions[6*t+0], 0.0, 1.0);
+    CLAMP(p->positions[6*t+1], 0.0, 1.0);
+    CLAMP(p->positions[6*t+2], p->positions[6*t+0] - 0.1, p->positions[6*t+0] + 0.1);
+    CLAMP(p->positions[6*t+3], p->positions[6*t+1] - 0.1, p->positions[6*t+1] + 0.1);
+    CLAMP(p->positions[6*t+4], p->positions[6*t+0] - 0.1, p->positions[6*t+0] + 0.1);
+    CLAMP(p->positions[6*t+5], p->positions[6*t+1] - 0.1, p->positions[6*t+1] + 0.1);
+    */
 
     CLAMP(p->positions[6*t+0], 0.0, 1.0);
     CLAMP(p->positions[6*t+1], 0.0, 1.0);
@@ -62,6 +114,86 @@ int painting_jiggle(s_painting* p)
     CLAMP(p->colours[9*t+8], 0.0, 1.0);
   }
   
+  return 0;
+}
+
+int paintings_breed(s_painting* child, s_painting* parent1, s_painting* parent2)
+{
+  assert(child != NULL);
+  assert(parent1 != NULL);
+  assert(parent2 != NULL);
+
+  if(rand()%2 == 0)
+  {
+    child->r = parent1->r;
+    child->g = parent1->g;
+    child->b = parent1->b;
+  }
+  else
+  {
+    child->r = parent2->r;
+    child->g = parent2->g;
+    child->b = parent2->b;
+  }
+
+  for(int i = 0; i < parent1->num_triangles; ++i)
+  {
+    if(rand()%2 == 0)
+    {
+      // Positions
+      child->positions[6*i+0] = parent1->positions[6*i+0];
+      child->positions[6*i+1] = parent1->positions[6*i+1];
+      child->positions[6*i+2] = parent1->positions[6*i+2];
+      child->positions[6*i+3] = parent1->positions[6*i+3];
+      child->positions[6*i+4] = parent1->positions[6*i+4];
+      child->positions[6*i+5] = parent1->positions[6*i+5];
+      // Colours
+      child->colours[9*i+0] = parent1->colours[9*i+0];
+      child->colours[9*i+1] = parent1->colours[9*i+1];
+      child->colours[9*i+2] = parent1->colours[9*i+2];
+      child->colours[9*i+3] = parent1->colours[9*i+3];
+      child->colours[9*i+4] = parent1->colours[9*i+4];
+      child->colours[9*i+5] = parent1->colours[9*i+5];
+      child->colours[9*i+6] = parent1->colours[9*i+6];
+      child->colours[9*i+7] = parent1->colours[9*i+7];
+      child->colours[9*i+8] = parent1->colours[9*i+8];
+      // uvs
+      child->uvs[6*i+0] = parent1->uvs[6*i+0];
+      child->uvs[6*i+1] = parent1->uvs[6*i+1];
+      child->uvs[6*i+2] = parent1->uvs[6*i+2];
+      child->uvs[6*i+3] = parent1->uvs[6*i+3];
+      child->uvs[6*i+4] = parent1->uvs[6*i+4];
+      child->uvs[6*i+5] = parent1->uvs[6*i+5];
+    }
+    else
+    {
+      // Positions
+      child->positions[6*i+0] = parent2->positions[6*i+0];
+      child->positions[6*i+1] = parent2->positions[6*i+1];
+      child->positions[6*i+2] = parent2->positions[6*i+2];
+      child->positions[6*i+3] = parent2->positions[6*i+3];
+      child->positions[6*i+4] = parent2->positions[6*i+4];
+      child->positions[6*i+5] = parent2->positions[6*i+5];
+      // Colours
+      child->colours[9*i+0] = parent2->colours[9*i+0];
+      child->colours[9*i+1] = parent2->colours[9*i+1];
+      child->colours[9*i+2] = parent2->colours[9*i+2];
+      child->colours[9*i+3] = parent2->colours[9*i+3];
+      child->colours[9*i+4] = parent2->colours[9*i+4];
+      child->colours[9*i+5] = parent2->colours[9*i+5];
+      child->colours[9*i+6] = parent2->colours[9*i+6];
+      child->colours[9*i+7] = parent2->colours[9*i+7];
+      child->colours[9*i+8] = parent2->colours[9*i+8];
+      // uvs
+      child->uvs[6*i+0] = parent2->uvs[6*i+0];
+      child->uvs[6*i+1] = parent2->uvs[6*i+1];
+      child->uvs[6*i+2] = parent2->uvs[6*i+2];
+      child->uvs[6*i+3] = parent2->uvs[6*i+3];
+      child->uvs[6*i+4] = parent2->uvs[6*i+4];
+      child->uvs[6*i+5] = parent2->uvs[6*i+5];
+    }
+  }
+
   return 0;
 }
 
@@ -121,8 +253,6 @@ int painting_init(s_painting* p, int w, int h)
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE); // GL_REPEAT
   
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w, h, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-  //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 960, 480, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
-  //glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 256, 256, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
   
   // create a framebuffer object
   glGenFramebuffers(1, &p->fbo);
@@ -149,16 +279,42 @@ int painting_init(s_painting* p, int w, int h)
   p->num_triangles = 64;
   p->score = 0.0;
   
+  #ifdef BACKGROUNDS
   p->r = RAND_BETWEEN(0.0, 1.0);
   p->g = RAND_BETWEEN(0.0, 1.0);
   p->b = RAND_BETWEEN(0.0, 1.0);
-  
+  #else
+  p->r = 1.0;
+  p->g = 1.0;
+  p->b = 1.0;
+  #endif
+
   for(int t = 0; t < p->num_triangles; ++t)
   {
     GLfloat r = RAND_BETWEEN(0.0, 1.0);
     GLfloat g = RAND_BETWEEN(0.0, 1.0);
     GLfloat b = RAND_BETWEEN(0.0, 1.0);
     
+    /*
+    float x = RAND_BETWEEN(0.0, 1.0);
+    float y = RAND_BETWEEN(0.0, 1.0);
+
+    // Position 1
+    p->positions.push_back(x);
+    p->positions.push_back(y);
+    // Position 2
+    p->positions.push_back(x + RAND_BETWEEN(-0.1, 0.1));
+    p->positions.push_back(y + RAND_BETWEEN(-0.1, 0.1));
+    // Position 3
+    p->positions.push_back(x + RAND_BETWEEN(-0.1, 0.1));
+    p->positions.push_back(y + RAND_BETWEEN(-0.1, 0.1));
+
+    CLAMP(p->positions[6*t+2], 0.0, 1.0);
+    CLAMP(p->positions[6*t+3], 0.0, 1.0);
+    CLAMP(p->positions[6*t+4], 0.0, 1.0);
+    CLAMP(p->positions[6*t+5], 0.0, 1.0);
+    */
+
     // Position 1
     p->positions.push_back(RAND_BETWEEN(0.0, 1.0));
     p->positions.push_back(RAND_BETWEEN(0.0, 1.0));
@@ -168,7 +324,7 @@ int painting_init(s_painting* p, int w, int h)
     // Position 3
     p->positions.push_back(RAND_BETWEEN(0.0, 1.0));
     p->positions.push_back(RAND_BETWEEN(0.0, 1.0));
-    
+
     // Colour 1
     p->colours.push_back(r);
     p->colours.push_back(g);

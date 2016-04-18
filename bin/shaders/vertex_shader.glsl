@@ -12,6 +12,6 @@ layout(location = 1) out vec2 uv;
 void main()
 {
   gl_Position = view*vec4(v_position, 0.0, 1.0);
-  colour = vec4(v_colour, 0.5);
+  colour = vec4(v_colour, 0.75);
   uv = v_uv;
 }

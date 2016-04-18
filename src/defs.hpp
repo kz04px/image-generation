@@ -21,7 +21,7 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define CLAMP(x, a, b) ((x) < (a) ? (x)=(a) : ((x) > (b) ? (x)=(b) : 0))
 
-#define NUM_PAINTINGS 16
+//#define BACKGROUNDS
 
 typedef struct
 {
@@ -48,8 +48,19 @@ typedef struct
 
 typedef struct
 {
+  int generation;
+  int num_paintings;
+  int tiles_w;
+  int tiles_h;
+  s_texture target;
+  std::vector<s_painting> paintings;
+} s_sim;
+
+typedef struct
+{
   int w;
   int h;
+  int best_painting;
   bool tiled_view;
   bool paused;
 } s_settings;
@@ -58,11 +69,21 @@ typedef struct
 int painting_init(s_painting* p, int w, int h);
 int painting_jiggle(s_painting* p);
 int painting_copy(s_painting* dest, s_painting* src);
+int paintings_breed(s_painting* child, s_painting* parent1, s_painting* parent2);
+
+// render.cpp
+int render_painting(s_painting* p);
+
+// other.cpp
+bool check_shader_compile_status(GLuint obj);
+bool check_program_link_status(GLuint obj);
 
 // io.cpp
 int bmp_load(s_texture* texture, const char *filename);
 int bmp_save_n(int n, const char *filename);
-std::string shader_load(const char* filename);
+bool vertex_shader_load(GLuint* vertex_shader, const char* filename);
+bool fragment_shader_load(GLuint* fragment_shader, const char* filename);
+bool compute_shader_load(GLuint* compute_shader, const char* filename);
 
 // callbacks.cpp
 void glfw_window_size_callback(GLFWwindow* window, int width, int height);

@@ -1,11 +1,77 @@
 #include "defs.hpp"
 
-std::string shader_load(const char* filename)
+std::string file_load(const char* filename)
 {
   std::ifstream t(filename);
   std::stringstream buffer;
   buffer << t.rdbuf();
   return buffer.str();
+}
+
+bool vertex_shader_load(GLuint* vertex_shader, const char* filename)
+{
+  assert(vertex_shader != NULL);
+  assert(filename != NULL);
+
+  std::string vertex_source = file_load(filename);
+
+  *vertex_shader = glCreateShader(GL_VERTEX_SHADER);
+
+  const char *source = vertex_source.c_str();
+  int length = vertex_source.size();
+
+  glShaderSource(*vertex_shader, 1, &source, &length);
+  glCompileShader(*vertex_shader);
+  if(!check_shader_compile_status(*vertex_shader))
+  {
+    return false;
+  }
+
+  return true;
+}
+
+bool fragment_shader_load(GLuint* fragment_shader, const char* filename)
+{
+  assert(fragment_shader != NULL);
+  assert(filename != NULL);
+  
+  std::string fragment_source = file_load(filename);
+
+  *fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
+
+  const char *source = fragment_source.c_str();
+  int length = fragment_source.size();
+
+  glShaderSource(*fragment_shader, 1, &source, &length);
+  glCompileShader(*fragment_shader);
+  if(!check_shader_compile_status(*fragment_shader))
+  {
+    return false;
+  }
+
+  return true;
+}
+
+bool compute_shader_load(GLuint* compute_shader, const char* filename)
+{
+  assert(compute_shader != NULL);
+  assert(filename != NULL);
+  
+  std::string compute_source = file_load(filename);
+
+  *compute_shader = glCreateShader(GL_COMPUTE_SHADER);
+  
+  const char *source = compute_source.c_str();
+  int length = compute_source.size();
+
+  glShaderSource(*compute_shader, 1, &source, &length);
+  glCompileShader(*compute_shader);
+  if(!check_shader_compile_status(*compute_shader))
+  {
+    return false;
+  }
+
+  return true;
 }
 
 int bmp_load(s_texture* texture, const char *filename)
@@ -97,7 +163,7 @@ int bmp_save_n(int n, const char *filename)
   fwrite(header, sizeof(*header), 54, file);
   //fwrite(data, sizeof(*data), width*height*3, file);
 
-  int row_size = int((bpp*width+31)/32)*4;
+  //int row_size = int((bpp*width+31)/32)*4;
   //int padding[row_size - 3*width] = {0};
 
   for(int y = 0; y < height; ++y)

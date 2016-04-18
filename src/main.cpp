@@ -6,38 +6,6 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/random.hpp>
 
-bool check_shader_compile_status(GLuint obj)
-{
-  GLint status;
-  glGetShaderiv(obj, GL_COMPILE_STATUS, &status);
-  if(status == GL_FALSE)
-  {
-    GLint length;
-    glGetShaderiv(obj, GL_INFO_LOG_LENGTH, &length);
-    std::vector<char> log(length);
-    glGetShaderInfoLog(obj, length, &length, &log[0]);
-    std::cerr << &log[0];
-    return false;
-  }
-  return true;
-}
-
-bool check_program_link_status(GLuint obj)
-{
-  GLint status;
-  glGetProgramiv(obj, GL_LINK_STATUS, &status);
-  if(status == GL_FALSE)
-  {
-    GLint length;
-    glGetProgramiv(obj, GL_INFO_LOG_LENGTH, &length);
-    std::vector<char> log(length);
-    glGetProgramInfoLog(obj, length, &length, &log[0]);
-    std::cerr << &log[0];
-    return false;
-  }
-  return true;
-}
-
 int main()
 {
   srand(time(0));
@@ -54,12 +22,10 @@ int main()
     return 1;
   }
 
-  // select opengl version
   glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
   glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
 
-  // create a window
   GLFWwindow *window;
   if((window = glfwCreateWindow(settings.w, settings.h, "Painting Evolution", 0, 0)) == 0)
   {
@@ -82,9 +48,8 @@ int main()
   GLenum err = glewInit();
   while((err = glGetError()) != GL_NO_ERROR)
   {
-    std::cout << "plsno" << std::endl;
-    //getchar();
-    //return 0;
+    std::cout << "glewInit error: " << err << std::endl;
+    std::cout << std::endl;
   }
   
   #ifndef NDEBUG
@@ -103,81 +68,49 @@ int main()
   glEnable(GL_BLEND);
   glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-  std::string vertex_source = shader_load("shaders\\vertex_shader.glsl");
-  std::string fragment_source = shader_load("shaders\\fragment_shader.glsl");
 
-  // program and shader handles
-  GLuint shader_program, vertex_shader, fragment_shader;
+  bool r;
+  
+  GLuint vertex_shader, fragment_shader, compute_shader;
 
-  // we need these to properly pass the strings
-  const char *source;
-  int length;
-
-  // create and compile vertex shader
-  vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-  source = vertex_source.c_str();
-  length = vertex_source.size();
-  glShaderSource(vertex_shader, 1, &source, &length);
-  glCompileShader(vertex_shader);
-  if(!check_shader_compile_status(vertex_shader))
+  r = vertex_shader_load(&vertex_shader, "shaders\\vertex_shader.glsl");
+  if(r == false)
   {
     glfwDestroyWindow(window);
     glfwTerminate();
-    return 1;
   }
 
-  // create and compile fragment shader
-  fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
-  source = fragment_source.c_str();
-  length = fragment_source.size();
-  glShaderSource(fragment_shader, 1, &source, &length);
-  glCompileShader(fragment_shader);
-  if(!check_shader_compile_status(fragment_shader))
+  r = fragment_shader_load(&fragment_shader, "shaders\\fragment_shader.glsl");
+  if(r == false)
   {
     glfwDestroyWindow(window);
     glfwTerminate();
-    return 1;
   }
+
+  r = compute_shader_load(&compute_shader, "shaders\\compute_shader.glsl");
+  if(r == false)
+  {
+    glfwDestroyWindow(window);
+    glfwTerminate();
+  }
+
+
+  GLuint shader_program, similarity_program;
 
   // create program
   shader_program = glCreateProgram();
-
-  // attach shaders
   glAttachShader(shader_program, vertex_shader);
   glAttachShader(shader_program, fragment_shader);
-
-  // link the program and check for errors
   glLinkProgram(shader_program);
   check_program_link_status(shader_program);
-
-  std::string acceleration_source = shader_load("shaders\\compute_shader.glsl");
-
-  // program and shader handles
-  GLuint similarity_program, similarity_shader;
-
-  // create and compile vertex shader
-  similarity_shader = glCreateShader(GL_COMPUTE_SHADER);
-  source = acceleration_source.c_str();
-  length = acceleration_source.size();
-  glShaderSource(similarity_shader, 1, &source, &length);
-  glCompileShader(similarity_shader);
-  if(!check_shader_compile_status(similarity_shader))
-  {
-    glfwDestroyWindow(window);
-    glfwTerminate();
-    return 1;
-  }
   
   // create program
   similarity_program = glCreateProgram();
-  
-  // attach shaders
-  glAttachShader(similarity_program, similarity_shader);
-  
-  // link the program and check for errors
+  glAttachShader(similarity_program, compute_shader);
   glLinkProgram(similarity_program);
   check_program_link_status(similarity_program);
   
+
   /**** side by side view ****/
   GLuint vao, vbo, cbo, uvbo;
   
@@ -204,21 +137,21 @@ int main()
   /**** side by side view ****/
   
 
-  // Create target texture
-  s_texture input;
-  bmp_load(&input, "input.bmp");
-
-  const int num_paintings = 36;
+  s_sim sim;
+  sim.generation = 0;
+  sim.num_paintings = 36;
+  sim.tiles_w = 1;
+  sim.tiles_h = 1;
+  bmp_load(&sim.target, "input.bmp");
   
-  s_painting paintings[num_paintings];
-  for(int p = 0; p < num_paintings; ++p)
+  s_painting paintings[sim.num_paintings];
+  for(int p = 0; p < sim.num_paintings; ++p)
   {
-    painting_init(&paintings[p], input.w, input.h);
+    painting_init(&paintings[p], sim.target.w, sim.target.h);
   }
   
-  int num_workgroups = input.w*input.h/16/16;
+  int num_workgroups = sim.target.w*sim.target.h/16/16;
   std::vector<GLfloat> scores(num_workgroups);
-  std::cout << "Num workgroups: " << num_workgroups << std::endl;
   
 
   // generate vao_compute and scores_bo
@@ -228,15 +161,9 @@ int main()
   glBindVertexArray(vao_compute);
   
   glGenBuffers(1, &scores_bo);
-  glBindBuffer(GL_SHADER_STORAGE_BUFFER, scores_bo);
-  
-  // set up generic attrib pointers
-  glEnableVertexAttribArray(0);
-  
-	const GLuint ssbos[] = {scores_bo};
-  //glBindBuffersBase(GL_SHADER_STORAGE_BUFFER, 0, 1, ssbos);
-  glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, ssbos[0]);
+  glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, scores_bo);
   glBufferData(GL_SHADER_STORAGE_BUFFER, num_workgroups*sizeof(scores[0]), &scores[0], GL_DYNAMIC_DRAW); // GL_STATIC_DRAW
+  
   
   GLuint texture = 0;
   glGenTextures(1, &texture);
@@ -246,17 +173,18 @@ int main()
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, input.w, input.h, 0, GL_RGB, GL_UNSIGNED_BYTE, input.data);
+  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, sim.target.w, sim.target.h, 0, GL_RGB, GL_UNSIGNED_BYTE, sim.target.data);
 
   glPointSize(2.0);
 
   GLuint query;
   glGenQueries(1, &query);
 
-  int best_painting = -1;
-  float best_score = FLT_MAX;
+  int parent1_id = -1;
+  int parent2_id = -1;
+  float parent1_score = FLT_MAX;
+  float parent2_score = FLT_MAX;
 
-  int gen = 0;
   while(!glfwWindowShouldClose(window))
   {
     glBeginQuery(GL_TIME_ELAPSED, query);
@@ -264,9 +192,9 @@ int main()
     
     if(settings.paused == false)
     {
-      glViewport(0, 0, input.w, input.h);
+      glViewport(0, 0, sim.target.w, sim.target.h);
       // Draw paintings
-      for(int p = 0; p < num_paintings; ++p)
+      for(int p = 0; p < sim.num_paintings; ++p)
       {
         glBindFramebuffer(GL_FRAMEBUFFER, paintings[p].fbo);
         glClearColor(paintings[p].r, paintings[p].g, paintings[p].b, 1.0);
@@ -300,8 +228,9 @@ int main()
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
       glViewport(0, 0, settings.w, settings.h);
 
+
       // Comparisons
-      for(int p = 0; p < num_paintings; ++p)
+      for(int p = 0; p < sim.num_paintings; ++p)
       {
         glUseProgram(similarity_program);
         
@@ -317,8 +246,8 @@ int main()
         glUniform1i(2, p);
 
         // Compute
-        int groups_x = input.w/16;
-        int groups_y = input.h/16;
+        int groups_x = sim.target.w/16;
+        int groups_y = sim.target.h/16;
         glDispatchCompute(groups_x, groups_y, 1);
 
         // Get scores
@@ -336,46 +265,66 @@ int main()
       
       
       // Find best painting
-      best_painting = -1;
-      best_score = FLT_MAX;
-      for(int p = 0; p < num_paintings; ++p)
+      parent1_id = -1;
+      parent1_score = FLT_MAX;
+      parent2_id = -1;
+      parent2_score = FLT_MAX;
+
+      for(int p = 0; p < sim.num_paintings; ++p)
       {
-        if(paintings[p].score<= best_score)
+        if(paintings[p].score <= parent1_score)
         {
-          best_painting = p;
-          best_score = paintings[p].score;
+          parent2_id = parent1_id;
+          parent2_score = parent1_score;
+
+          parent1_id = p;
+          parent1_score = paintings[p].score;
+          continue;
+        }
+        if(paintings[p].score <= parent2_score)
+        {
+          parent2_id = p;
+          parent2_score = paintings[p].score;
         }
       }
-      assert(best_painting != -1);
-      assert(best_score >= 0.0);
+
+      assert(parent1_id != -1);
+      assert(parent2_id != -1);
+      assert(parent1_id != parent2_id);
+      assert(parent1_score >= 0.0);
+      assert(parent2_score >= 0.0);
       
 
+      // To be used when a screenshot is taken
+      settings.best_painting = paintings[parent1_id].texture_id;
+
+
       // Create new paintings from best
-      for(int p = 0; p < num_paintings; ++p)
+      for(int p = 0; p < sim.num_paintings; ++p)
       {
-        if(p == best_painting) {continue;}
-        
-        painting_copy(&paintings[p], &paintings[best_painting]);
+        if(p == parent1_id || p == parent2_id) {continue;}
+
+        paintings_breed(&paintings[p], &paintings[parent1_id], &paintings[parent2_id]);
       }
       
       
       // Mutate paintings
-      for(int p = 0; p < num_paintings; ++p)
+      for(int p = 0; p < sim.num_paintings; ++p)
       {
-        if(p == best_painting) {continue;}
-        
+        if(p == parent1_id || p == parent2_id) {continue;}
+
         painting_jiggle(&paintings[p]);
       }
       
 
       // Print scores occasionally
-      if(gen%100 == 0)
+      if(sim.generation%100 == 0)
       {
-        std::cout << "Gen " << gen << ": " << best_painting << " - " << (1.0 - best_score/(input.w * input.h * 3))*100.0 << "%" << std::endl;
+        std::cout << "Gen " << sim.generation << ": " << parent1_id << " - " << (1.0 - parent1_score/(sim.target.w * sim.target.h * 3))*100.0 << "%" << std::endl;
 
         /*
         // Print scores
-        for(int p = 0; p < num_paintings && p < 8; ++p)
+        for(int p = 0; p < sim.num_paintings && p < 8; ++p)
         {
           std::cout << paintings[p].score << " ";
         }
@@ -384,7 +333,7 @@ int main()
         */
       }
       
-      gen++;
+      sim.generation++;
     }
 
     // Render target and best paintings
@@ -423,10 +372,10 @@ int main()
     
     if(settings.tiled_view == true)
     {
-      int x_num = ceil(sqrt(num_paintings));
-      int y_num = ceil(sqrt(num_paintings));
+      int x_num = ceil(sqrt(sim.num_paintings));
+      int y_num = ceil(sqrt(sim.num_paintings));
 
-      if(x_num*(y_num-1) >= num_paintings)
+      if(x_num*(y_num-1) >= sim.num_paintings)
       {
         y_num -= 1;
       }
@@ -438,7 +387,7 @@ int main()
       {
         for(int x = 0; x < x_num; ++x)
         {
-          if(y*x_num + x >= num_paintings) {break;}
+          if(y*x_num + x >= sim.num_paintings) {break;}
           
           glBindTexture(GL_TEXTURE_2D, paintings[y*y_num + x].texture_id);
           positions[0] = x*width;     positions[1] = y*height;
@@ -457,7 +406,7 @@ int main()
     }
     else
     {
-      glBindTexture(GL_TEXTURE_2D, paintings[best_painting].texture_id);
+      glBindTexture(GL_TEXTURE_2D, paintings[parent1_id].texture_id);
       positions[0] = 0.0;
       positions[2] = 0.0;
       positions[4] = 1.0;
@@ -501,8 +450,8 @@ int main()
   glDeleteShader(fragment_shader);
   glDeleteProgram(shader_program);
 
-  glDetachShader(similarity_program, similarity_shader);
-  glDeleteShader(similarity_shader);
+  glDetachShader(similarity_program, compute_shader);
+  glDeleteShader(compute_shader);
   glDeleteProgram(similarity_program);
 
   glfwDestroyWindow(window);
