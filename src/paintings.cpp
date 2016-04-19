@@ -3,6 +3,49 @@
 #define MUTATE_RATE_POS 0.01
 #define MUTATE_RATE_COL 0.01
 
+int painting_randomise(s_painting* p)
+{
+  assert(p != NULL);
+
+  #ifdef BACKGROUNDS
+  p->r = RAND_BETWEEN(0.0, 1.0);
+  p->g = RAND_BETWEEN(0.0, 1.0);
+  p->b = RAND_BETWEEN(0.0, 1.0);
+  #endif
+
+  for(int t = 0; t < p->num_triangles; ++t)
+  {
+    // Position 1
+    p->positions[6*t+0] = RAND_BETWEEN(0.0, 1.0);
+    p->positions[6*t+1] = RAND_BETWEEN(0.0, 1.0);
+    // Position 2
+    p->positions[6*t+2] = RAND_BETWEEN(0.0, 1.0);
+    p->positions[6*t+3] = RAND_BETWEEN(0.0, 1.0);
+    // Position 3
+    p->positions[6*t+4] = RAND_BETWEEN(0.0, 1.0);
+    p->positions[6*t+5] = RAND_BETWEEN(0.0, 1.0);
+
+    GLfloat dr = RAND_BETWEEN(0.0, 1.0);
+    GLfloat dg = RAND_BETWEEN(0.0, 1.0);
+    GLfloat db = RAND_BETWEEN(0.0, 1.0);
+    
+    // Colour 1
+    p->colours[9*t+0] = dr;
+    p->colours[9*t+1] = dg;
+    p->colours[9*t+2] = db;
+    // Colour 2
+    p->colours[9*t+3] = dr;
+    p->colours[9*t+4] = dg;
+    p->colours[9*t+5] = db;
+    // Colour 3
+    p->colours[9*t+6] = dr;
+    p->colours[9*t+7] = dg;
+    p->colours[9*t+8] = db;
+  }
+
+  return 0;
+}
+
 int painting_jiggle(s_painting* p)
 {
   assert(p != NULL);
@@ -276,7 +319,7 @@ int painting_init(s_painting* p, int w, int h)
   
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   
-  p->num_triangles = 64;
+  p->num_triangles = 32;
   p->score = 0.0;
   
   #ifdef BACKGROUNDS

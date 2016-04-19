@@ -139,18 +139,26 @@ int main()
 
   s_sim sim;
   sim.generation = 0;
-  sim.num_paintings = 36;
-  sim.tiles_w = 1;
-  sim.tiles_h = 1;
   bmp_load(&sim.target, "input.bmp");
   
-  s_painting paintings[sim.num_paintings];
-  for(int p = 0; p < sim.num_paintings; ++p)
+  sim.grid_w = 4;
+  sim.grid_h = 8;
+  sim.tile_w = sim.target.w/sim.grid_w;
+  sim.tile_h = sim.target.h/sim.grid_h;
+
+  assert(sim.target.w%16 == 0);
+  assert(sim.target.h%16 == 0);
+  assert(sim.tile_w%16 == 0);
+  assert(sim.tile_h%16 == 0);
+  
+  s_painting temp;
+  for(int p = 0; p < 36; ++p)
   {
-    painting_init(&paintings[p], sim.target.w, sim.target.h);
+    sim.paintings.push_back(temp);
+    painting_init(&sim.paintings[p], sim.tile_w, sim.tile_h);
   }
   
-  int num_workgroups = sim.target.w*sim.target.h/16/16;
+  int num_workgroups = sim.tile_w*sim.tile_h/16/16;
   std::vector<GLfloat> scores(num_workgroups);
   
 
@@ -165,39 +173,110 @@ int main()
   glBufferData(GL_SHADER_STORAGE_BUFFER, num_workgroups*sizeof(scores[0]), &scores[0], GL_DYNAMIC_DRAW); // GL_STATIC_DRAW
   
   
-  GLuint texture = 0;
-  glGenTextures(1, &texture);
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, texture);
+  glGenTextures(1, &sim.target_id);
+  glBindTexture(GL_TEXTURE_2D, sim.target_id);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // GL_LINEAR
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
   glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, sim.target.w, sim.target.h, 0, GL_RGB, GL_UNSIGNED_BYTE, sim.target.data);
 
+  glGenTextures(1, &sim.result_id);
+  glBindTexture(GL_TEXTURE_2D, sim.result_id);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // GL_LINEAR
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, sim.target.w, sim.target.h, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+
+  std::vector<GLubyte> emptyData(sim.target.w * sim.target.h * 3, 0);
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sim.target.w, sim.target.h, GL_RGB, GL_UNSIGNED_BYTE, &emptyData[0]);
+
+  GLuint texture_slice = 0;
+  glGenTextures(1, &texture_slice);
+  glActiveTexture(GL_TEXTURE0 + texture_slice);
+  glBindTexture(GL_TEXTURE_2D, texture_slice);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // GL_LINEAR
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, sim.tile_w, sim.tile_h, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+
   glPointSize(2.0);
 
   GLuint query;
   glGenQueries(1, &query);
 
-  int parent1_id = -1;
-  int parent2_id = -1;
-  float parent1_score = FLT_MAX;
-  float parent2_score = FLT_MAX;
+
+  GLubyte data[3*sim.tile_w*sim.tile_h];
+
+  unsigned int parent1_id = 0;
+  unsigned int parent2_id = 0;
+  float parent1_score = FLT_MIN;
+  float parent2_score = FLT_MIN;
+
+  int tile_x = -1;
+  int tile_y = 0;
+
+  int x_offset = 0;
+  int y_offset = 0;
 
   while(!glfwWindowShouldClose(window))
   {
     glBeginQuery(GL_TIME_ELAPSED, query);
 
+    if(tile_y >= sim.grid_h)
+    {
+      settings.paused = true;
+    }
     
     if(settings.paused == false)
     {
-      glViewport(0, 0, sim.target.w, sim.target.h);
-      // Draw paintings
-      for(int p = 0; p < sim.num_paintings; ++p)
+      // Next tile
+      if(1.0 - parent1_score/(3.0*sim.tile_w*sim.tile_h) >= TARGET_PERCENTAGE || sim.generation >= MAX_GEN)
       {
-        glBindFramebuffer(GL_FRAMEBUFFER, paintings[p].fbo);
-        glClearColor(paintings[p].r, paintings[p].g, paintings[p].b, 1.0);
+        for(unsigned int p = 0; p < sim.paintings.size(); ++p)
+        {
+          painting_randomise(&sim.paintings[p]);
+        }
+
+        tile_x++;
+        if(tile_x >= sim.grid_w)
+        {
+          tile_x = 0;
+          tile_y++;
+          if(tile_y >= sim.grid_h)
+          {
+            //break;
+          }
+        }
+
+        x_offset = tile_x * sim.tile_w;
+        y_offset = tile_y * sim.tile_h;
+
+        sim.generation = 0;
+
+        for(int y = 0; y < sim.tile_h; ++y)
+        {
+          for(int x = 0; x < sim.tile_w; ++x)
+          {
+            data[3*y*sim.tile_w + 3*x + 0] = sim.target.data[3*(y + y_offset) *sim.target.w + 3*(x + x_offset) + 0];
+            data[3*y*sim.tile_w + 3*x + 1] = sim.target.data[3*(y + y_offset) *sim.target.w + 3*(x + x_offset) + 1];
+            data[3*y*sim.tile_w + 3*x + 2] = sim.target.data[3*(y + y_offset) *sim.target.w + 3*(x + x_offset) + 2];
+          }
+        }
+        
+        glBindTexture(GL_TEXTURE_2D, texture_slice);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sim.tile_w, sim.tile_h, GL_RGB, GL_UNSIGNED_BYTE, data);
+      }
+
+
+      // Draw paintings
+      glViewport(0, 0, sim.tile_w, sim.tile_h);
+      for(unsigned int p = 0; p < sim.paintings.size(); ++p)
+      {
+        glBindFramebuffer(GL_FRAMEBUFFER, sim.paintings[p].fbo);
+        glClearColor(sim.paintings[p].r, sim.paintings[p].g, sim.paintings[p].b, 1.0);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         
         // bind the current vao
@@ -205,17 +284,16 @@ int main()
         
         // Vertices
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, 2 * 3 * paintings[p].num_triangles * sizeof(GLfloat), &paintings[p].positions[0], GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, 2 * 3 * sim.paintings[p].num_triangles * sizeof(GLfloat), &sim.paintings[p].positions[0], GL_STATIC_DRAW);
         
         // Colours
         glBindBuffer(GL_ARRAY_BUFFER, cbo);
-        glBufferData(GL_ARRAY_BUFFER, 3 * 3 * paintings[p].num_triangles * sizeof(GLfloat), &paintings[p].colours[0], GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, 3 * 3 * sim.paintings[p].num_triangles * sizeof(GLfloat), &sim.paintings[p].colours[0], GL_STATIC_DRAW);
         
         // Texture coords
         glBindBuffer(GL_ARRAY_BUFFER, uvbo);
-        glBufferData(GL_ARRAY_BUFFER, 2 * 3 * paintings[p].num_triangles * sizeof(GLfloat), &paintings[p].uvs[0], GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, 2 * 3 * sim.paintings[p].num_triangles * sizeof(GLfloat), &sim.paintings[p].uvs[0], GL_STATIC_DRAW);
         
-        // use the shader program
         glUseProgram(shader_program);
         
         // set the uniforms
@@ -223,31 +301,31 @@ int main()
         glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(view));
         
         // draw
-        glDrawArrays(GL_TRIANGLES, 0, 3*paintings[p].num_triangles);
+        glDrawArrays(GL_TRIANGLES, 0, 3*sim.paintings[p].num_triangles);
       }
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
       glViewport(0, 0, settings.w, settings.h);
 
 
       // Comparisons
-      for(int p = 0; p < sim.num_paintings; ++p)
+      for(unsigned int p = 0; p < sim.paintings.size(); ++p)
       {
         glUseProgram(similarity_program);
         
-        glActiveTexture(GL_TEXTURE0 + texture);
-        glBindTexture(GL_TEXTURE_2D, texture);
+        glActiveTexture(GL_TEXTURE0 + texture_slice);
+        glBindTexture(GL_TEXTURE_2D, texture_slice);
         
-        glActiveTexture(GL_TEXTURE0 + paintings[p].texture_id);
-        glBindTexture(GL_TEXTURE_2D, paintings[p].texture_id);
+        glActiveTexture(GL_TEXTURE0 + sim.paintings[p].texture_id);
+        glBindTexture(GL_TEXTURE_2D, sim.paintings[p].texture_id);
         
         // setup uniforms
-        glUniform1i(0, texture);
-        glUniform1i(1, paintings[p].texture_id);
+        glUniform1i(0, texture_slice);
+        glUniform1i(1, sim.paintings[p].texture_id);
         glUniform1i(2, p);
 
         // Compute
-        int groups_x = sim.target.w/16;
-        int groups_y = sim.target.h/16;
+        int groups_x = sim.tile_w/16;
+        int groups_y = sim.tile_h/16;
         glDispatchCompute(groups_x, groups_y, 1);
 
         // Get scores
@@ -255,88 +333,93 @@ int main()
         glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, num_workgroups*sizeof(scores[0]), &scores[0]);
 
         // Calculate score
-        paintings[p].score = 0.0;
+        sim.paintings[p].score = 0.0;
         for(int n = 0; n < num_workgroups; ++n)
         {
-          paintings[p].score += scores[n];
+          sim.paintings[p].score += scores[n];
         }
       }
       glActiveTexture(GL_TEXTURE0);
       
       
       // Find best painting
-      parent1_id = -1;
+      parent1_id = sim.paintings.size();
       parent1_score = FLT_MAX;
-      parent2_id = -1;
+      parent2_id = sim.paintings.size();
       parent2_score = FLT_MAX;
 
-      for(int p = 0; p < sim.num_paintings; ++p)
+      for(unsigned int p = 0; p < sim.paintings.size(); ++p)
       {
-        if(paintings[p].score <= parent1_score)
+        if(sim.paintings[p].score <= parent1_score)
         {
           parent2_id = parent1_id;
           parent2_score = parent1_score;
 
           parent1_id = p;
-          parent1_score = paintings[p].score;
+          parent1_score = sim.paintings[p].score;
           continue;
         }
-        if(paintings[p].score <= parent2_score)
+        if(sim.paintings[p].score <= parent2_score)
         {
           parent2_id = p;
-          parent2_score = paintings[p].score;
+          parent2_score = sim.paintings[p].score;
         }
       }
 
-      assert(parent1_id != -1);
-      assert(parent2_id != -1);
+      assert(parent1_id != sim.paintings.size());
+      assert(parent2_id != sim.paintings.size());
       assert(parent1_id != parent2_id);
       assert(parent1_score >= 0.0);
       assert(parent2_score >= 0.0);
       
 
       // To be used when a screenshot is taken
-      settings.best_painting = paintings[parent1_id].texture_id;
+      settings.best_painting = sim.result_id;
 
 
-      // Create new paintings from best
-      for(int p = 0; p < sim.num_paintings; ++p)
+      // Create new sim.paintings from best
+      for(unsigned int p = 0; p < sim.paintings.size(); ++p)
       {
         if(p == parent1_id || p == parent2_id) {continue;}
 
-        paintings_breed(&paintings[p], &paintings[parent1_id], &paintings[parent2_id]);
+        paintings_breed(&sim.paintings[p], &sim.paintings[parent1_id], &sim.paintings[parent2_id]);
       }
       
       
-      // Mutate paintings
-      for(int p = 0; p < sim.num_paintings; ++p)
+      // Mutate sim.paintings
+      for(unsigned int p = 0; p < sim.paintings.size(); ++p)
       {
         if(p == parent1_id || p == parent2_id) {continue;}
 
-        painting_jiggle(&paintings[p]);
+        painting_jiggle(&sim.paintings[p]);
       }
       
 
       // Print scores occasionally
-      if(sim.generation%100 == 0)
+      if(sim.generation%250 == 0)
       {
-        std::cout << "Gen " << sim.generation << ": " << parent1_id << " - " << (1.0 - parent1_score/(sim.target.w * sim.target.h * 3))*100.0 << "%" << std::endl;
-
-        /*
-        // Print scores
-        for(int p = 0; p < sim.num_paintings && p < 8; ++p)
-        {
-          std::cout << paintings[p].score << " ";
-        }
-        std::cout << std::endl;
-        std::cout << std::endl;
-        */
+        std::cout << "Gen " << sim.generation << ": " << parent1_id << " - " << (1.0 - parent1_score/(3 * sim.tile_w * sim.tile_h))*100.0 << "%" << std::endl;
       }
       
+
       sim.generation++;
+
+
+      // Save to result texture
+      if(1.0 - parent1_score/(3.0*sim.tile_w*sim.tile_h) >= TARGET_PERCENTAGE || sim.generation >= MAX_GEN)
+      {
+        // Get tile data
+        glBindTexture(GL_TEXTURE_2D, sim.paintings[parent1_id].texture_id);
+        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+
+        // Write tile to result texture
+        glBindTexture(GL_TEXTURE_2D, sim.result_id);
+        glTexSubImage2D(GL_TEXTURE_2D, 0, x_offset, y_offset, sim.tile_w, sim.tile_h, GL_RGB, GL_UNSIGNED_BYTE, data);
+      }
     }
 
-    // Render target and best paintings
+
+    // Render target and best sim.paintings
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glClearColor(0.0, 0.0, 0.0, 1.0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -349,7 +432,7 @@ int main()
     glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(view));
     
     // Render target to the screen
-    glBindTexture(GL_TEXTURE_2D, texture);
+    glBindTexture(GL_TEXTURE_2D, sim.target_id);
     GLfloat positions[8] = {-1.0, 0.0,
                             -1.0, 1.0,
                              0.0, 1.0,
@@ -372,10 +455,10 @@ int main()
     
     if(settings.tiled_view == true)
     {
-      int x_num = ceil(sqrt(sim.num_paintings));
-      int y_num = ceil(sqrt(sim.num_paintings));
+      unsigned int x_num = ceil(sqrt(sim.paintings.size()));
+      unsigned int y_num = ceil(sqrt(sim.paintings.size()));
 
-      if(x_num*(y_num-1) >= sim.num_paintings)
+      if(x_num*(y_num-1) >= sim.paintings.size())
       {
         y_num -= 1;
       }
@@ -383,13 +466,13 @@ int main()
       float width  = 1.0/x_num;
       float height = 1.0/y_num;
       
-      for(int y = 0; y < y_num; ++y)
+      for(unsigned int y = 0; y < y_num; ++y)
       {
-        for(int x = 0; x < x_num; ++x)
+        for(unsigned int x = 0; x < x_num; ++x)
         {
-          if(y*x_num + x >= sim.num_paintings) {break;}
+          if(y*x_num + x >= sim.paintings.size()) {break;}
           
-          glBindTexture(GL_TEXTURE_2D, paintings[y*y_num + x].texture_id);
+          glBindTexture(GL_TEXTURE_2D, sim.paintings[y*y_num + x].texture_id);
           positions[0] = x*width;     positions[1] = y*height;
           positions[2] = x*width;     positions[3] = (y+1)*height;
           positions[4] = (x+1)*width; positions[5] = (y+1)*height;
@@ -406,11 +489,33 @@ int main()
     }
     else
     {
-      glBindTexture(GL_TEXTURE_2D, paintings[parent1_id].texture_id);
-      positions[0] = 0.0;
-      positions[2] = 0.0;
-      positions[4] = 1.0;
-      positions[6] = 1.0;
+      // Draw the results texture
+      glBindTexture(GL_TEXTURE_2D, sim.result_id);
+      positions[0] = 0.0; positions[1] = 0.0;
+      positions[2] = 0.0; positions[3] = 1.0;
+      positions[4] = 1.0; positions[5] = 1.0;
+      positions[6] = 1.0; positions[7] = 0.0;
+
+      glBindBuffer(GL_ARRAY_BUFFER, vbo);
+      glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat), &positions, GL_STATIC_DRAW);
+      glBindBuffer(GL_ARRAY_BUFFER, cbo);
+      glBufferData(GL_ARRAY_BUFFER, 12 * sizeof(GLfloat), &colours, GL_STATIC_DRAW);
+      glBindBuffer(GL_ARRAY_BUFFER, uvbo);
+      glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat), &uvs, GL_STATIC_DRAW);
+      glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+
+
+      // Draw current best over the top of the results texture
+      glBindTexture(GL_TEXTURE_2D, sim.paintings[parent1_id].texture_id);
+
+      float x_gap = 1.0/sim.grid_w;
+      float y_gap = 1.0/sim.grid_h;
+
+      positions[0] = x_gap*tile_x;     positions[1] = y_gap*tile_y;
+      positions[2] = x_gap*tile_x;     positions[3] = y_gap*(tile_y+1);
+      positions[4] = x_gap*(tile_x+1); positions[5] = y_gap*(tile_y+1);
+      positions[6] = x_gap*(tile_x+1); positions[7] = y_gap*tile_y;
+
       glBindBuffer(GL_ARRAY_BUFFER, vbo);
       glBufferData(GL_ARRAY_BUFFER, 8 * sizeof(GLfloat), &positions, GL_STATIC_DRAW);
       glBindBuffer(GL_ARRAY_BUFFER, cbo);

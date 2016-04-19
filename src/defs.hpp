@@ -21,6 +21,8 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define CLAMP(x, a, b) ((x) < (a) ? (x)=(a) : ((x) > (b) ? (x)=(b) : 0))
 
+#define TARGET_PERCENTAGE 0.95
+#define MAX_GEN 5000
 //#define BACKGROUNDS
 
 typedef struct
@@ -49,10 +51,16 @@ typedef struct
 typedef struct
 {
   int generation;
-  int num_paintings;
-  int tiles_w;
-  int tiles_h;
+  int grid_w;
+  int grid_h;
+  int tile_w;
+  int tile_h;
+
+  GLuint result_id;
+
+  GLuint target_id;
   s_texture target;
+
   std::vector<s_painting> paintings;
 } s_sim;
 
@@ -70,6 +78,7 @@ int painting_init(s_painting* p, int w, int h);
 int painting_jiggle(s_painting* p);
 int painting_copy(s_painting* dest, s_painting* src);
 int paintings_breed(s_painting* child, s_painting* parent1, s_painting* parent2);
+int painting_randomise(s_painting* p);
 
 // render.cpp
 int render_painting(s_painting* p);
