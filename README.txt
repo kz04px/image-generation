@@ -10,6 +10,12 @@ Platforms:
 - Windows
 
 Controls:
-    F2 - Screenshot
- Enter - Switch between tiled view and normal view
- Space - Toggle pause
+ WASD - Change current grid to render
+    1 - Set grid control to manual
+    2 - Set grid control to automatic
+   F2 - Screenshot
+   F5 - Save
+   F9 - Load
+    T - Print results
+Enter - View the current generation or overall picture
+Space - Toggle pause

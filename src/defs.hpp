@@ -21,8 +21,13 @@
 #define MAX(a, b) ((a) > (b) ? (a) : (b))
 #define CLAMP(x, a, b) ((x) < (a) ? (x)=(a) : ((x) > (b) ? (x)=(b) : 0))
 
-#define TARGET_PERCENTAGE 0.95
-#define MAX_GEN 5000
+#define MODE_AUTO   0
+#define MODE_MANUAL 1
+
+#define TARGET_PERCENTAGE 0.975
+#define MIN_GEN 1000
+#define MAX_GEN 10000
+#define GRAYSCALE
 //#define BACKGROUNDS
 
 typedef struct
@@ -37,6 +42,8 @@ typedef struct
   GLuint fbo;
   GLuint texture_id;
   
+  int generation;
+
   GLfloat r;
   GLfloat g;
   GLfloat b;
@@ -50,27 +57,31 @@ typedef struct
 
 typedef struct
 {
-  int generation;
+  int grid_pos;
   int grid_w;
   int grid_h;
   int tile_w;
   int tile_h;
 
   GLuint result_id;
+  GLuint result_fbo;
 
   GLuint target_id;
   s_texture target;
 
+  std::vector<s_painting> grid_paintings;
   std::vector<s_painting> paintings;
 } s_sim;
 
 typedef struct
 {
+  int mode;
   int w;
   int h;
   int best_painting;
   bool tiled_view;
   bool paused;
+  s_sim *sim;
 } s_settings;
 
 // paintings.cpp
@@ -79,9 +90,8 @@ int painting_jiggle(s_painting* p);
 int painting_copy(s_painting* dest, s_painting* src);
 int paintings_breed(s_painting* child, s_painting* parent1, s_painting* parent2);
 int painting_randomise(s_painting* p);
-
-// render.cpp
-int render_painting(s_painting* p);
+int paintings_save(s_sim *sim, const char *filename);
+int paintings_load(s_sim *sim, const char *filename);
 
 // other.cpp
 bool check_shader_compile_status(GLuint obj);

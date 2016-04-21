@@ -1,7 +1,126 @@
 #include "defs.hpp"
+#include <string.h>
 
 #define MUTATE_RATE_POS 0.01
 #define MUTATE_RATE_COL 0.01
+
+int paintings_load(s_sim *sim, const char *filename)
+{
+  assert(sim != NULL);
+  assert(filename != NULL);
+
+  FILE *file = fopen(filename, "r");
+  if(file == NULL) {return -1;}
+
+  unsigned int p = 0;
+  int t = 0;
+
+  char line[512];
+  while(fgets(line, sizeof(line), file))
+  {
+    if(line[0] == '#') {continue;}
+
+    char *setting = strtok(line, " ");
+    char *value = strtok(NULL, " \n\0");
+
+    if(strncmp(setting, "Painting:", 9) == 0)
+    {
+      p = atoi(value);
+      if(p >= sim->grid_paintings.size()) {return -2;}
+      t = 0;
+    }
+    else if(strncmp(setting, "Score:", 6) == 0)
+    {
+      sim->grid_paintings[p].score = atof(value);
+    }
+    else if(strncmp(setting, "Generation:", 11) == 0)
+    {
+      sim->grid_paintings[p].generation = atoi(value);
+    }
+    else if(strncmp(setting, "r:", 2) == 0)
+    {
+      sim->grid_paintings[p].r = atof(value);
+    }
+    else if(strncmp(setting, "g:", 2) == 0)
+    {
+      sim->grid_paintings[p].g = atof(value);
+    }
+    else if(strncmp(setting, "b:", 2) == 0)
+    {
+      sim->grid_paintings[p].b = atof(value);
+    }
+    else if(strncmp(setting, "TRI:", 4) == 0)
+    {
+      sim->grid_paintings[p].positions[6*t+0] = atof(value);
+      value = strtok(NULL, " \n\0");
+      sim->grid_paintings[p].positions[6*t+1] = atof(value);
+      value = strtok(NULL, " \n\0");
+      sim->grid_paintings[p].positions[6*t+2] = atof(value);
+      value = strtok(NULL, " \n\0");
+      sim->grid_paintings[p].positions[6*t+3] = atof(value);
+      value = strtok(NULL, " \n\0");
+      sim->grid_paintings[p].positions[6*t+4] = atof(value);
+      value = strtok(NULL, " \n\0");
+      sim->grid_paintings[p].positions[6*t+5] = atof(value);
+      value = strtok(NULL, " \n\0");
+
+      float r = atof(value);
+      value = strtok(NULL, " \n\0");
+      float g = atof(value);
+      value = strtok(NULL, " \n\0");
+      float b = atof(value);
+
+      sim->grid_paintings[p].colours[9*t+0] = r;
+      sim->grid_paintings[p].colours[9*t+1] = g;
+      sim->grid_paintings[p].colours[9*t+2] = b;
+      sim->grid_paintings[p].colours[9*t+3] = r;
+      sim->grid_paintings[p].colours[9*t+4] = g;
+      sim->grid_paintings[p].colours[9*t+5] = b;
+      sim->grid_paintings[p].colours[9*t+6] = r;
+      sim->grid_paintings[p].colours[9*t+7] = g;
+      sim->grid_paintings[p].colours[9*t+8] = b;
+
+      t++;
+    }
+  }
+
+  fclose(file);
+  return 0;
+}
+
+int paintings_save(s_sim *sim, const char *filename)
+{
+  assert(sim != NULL);
+  assert(filename != NULL);
+
+  FILE* file = fopen(filename, "w");
+  if(file == NULL) {return -1;}
+
+  for(unsigned int p = 0; p < sim->grid_paintings.size(); ++p)
+  {
+    fprintf(file, "Painting: %i\n", p);
+    fprintf(file, "Score: %f\n", sim->grid_paintings[p].score);
+    fprintf(file, "Generation: %i\n", sim->grid_paintings[p].generation);
+    fprintf(file, "r: %f\n", sim->grid_paintings[p].r);
+    fprintf(file, "g: %f\n", sim->grid_paintings[p].g);
+    fprintf(file, "b: %f\n", sim->grid_paintings[p].b);
+    for(int t = 0; t < sim->grid_paintings[p].num_triangles; ++t)
+    {
+      fprintf(file, "TRI: %f %f %f %f %f %f %f %f %f\n", sim->grid_paintings[p].positions[6*t+0],
+                                                         sim->grid_paintings[p].positions[6*t+1],
+                                                         sim->grid_paintings[p].positions[6*t+2],
+                                                         sim->grid_paintings[p].positions[6*t+3],
+                                                         sim->grid_paintings[p].positions[6*t+4],
+                                                         sim->grid_paintings[p].positions[6*t+5],
+                                                         sim->grid_paintings[p].colours[9*t+0],
+                                                         sim->grid_paintings[p].colours[9*t+1],
+                                                         sim->grid_paintings[p].colours[9*t+2]);
+    }
+  }
+
+  fclose(file);
+  return 0;
+}
 
 int painting_randomise(s_painting* p)
 {
@@ -12,6 +131,9 @@ int painting_randomise(s_painting* p)
   p->g = RAND_BETWEEN(0.0, 1.0);
   p->b = RAND_BETWEEN(0.0, 1.0);
   #endif
+
+  p->generation = 0;
+  p->score = 0.0;
 
   for(int t = 0; t < p->num_triangles; ++t)
   {
@@ -28,6 +150,11 @@ int painting_randomise(s_painting* p)
     GLfloat dr = RAND_BETWEEN(0.0, 1.0);
     GLfloat dg = RAND_BETWEEN(0.0, 1.0);
     GLfloat db = RAND_BETWEEN(0.0, 1.0);
+
+    #ifdef GRAYSCALE
+    dg = dr;
+    db = dr;
+    #endif
     
     // Colour 1
     p->colours[9*t+0] = dr;
@@ -87,6 +214,11 @@ int painting_jiggle(s_painting* p)
     GLfloat dr = RAND_BETWEEN(0.0, 1.0);
     GLfloat dg = RAND_BETWEEN(0.0, 1.0);
     GLfloat db = RAND_BETWEEN(0.0, 1.0);
+
+    #ifdef GRAYSCALE
+    dg = dr;
+    db = dr;
+    #endif
     
     // Colour 1
     p->colours[9*t+0] = dr;
@@ -106,6 +238,11 @@ int painting_jiggle(s_painting* p)
     GLfloat dr = RAND_BETWEEN(-MUTATE_RATE_COL, MUTATE_RATE_COL);
     GLfloat dg = RAND_BETWEEN(-MUTATE_RATE_COL, MUTATE_RATE_COL);
     GLfloat db = RAND_BETWEEN(-MUTATE_RATE_COL, MUTATE_RATE_COL);
+
+    #ifdef GRAYSCALE
+    dg = dr;
+    db = dr;
+    #endif
     
     // Position 1
     p->positions[6*t+0] += RAND_BETWEEN(-MUTATE_RATE_POS, MUTATE_RATE_POS);
@@ -245,6 +382,10 @@ int painting_copy(s_painting* dest, s_painting* src)
   assert(dest != NULL);
   assert(src != NULL);
 
+  dest->num_triangles = src->num_triangles;
+  dest->generation = src->generation;
+  dest->score = src->score;
+
   dest->r = src->r;
   dest->g = src->g;
   dest->b = src->b;
@@ -319,6 +460,7 @@ int painting_init(s_painting* p, int w, int h)
   
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   
+  p->generation = 0;
   p->num_triangles = 32;
   p->score = 0.0;
   
@@ -326,10 +468,24 @@ int painting_init(s_painting* p, int w, int h)
   p->r = RAND_BETWEEN(0.0, 1.0);
   p->g = RAND_BETWEEN(0.0, 1.0);
   p->b = RAND_BETWEEN(0.0, 1.0);
+
+  #ifdef GRAYSCALE
+  p->g = p->r;
+  p->b = p->r;
+  #endif
+
+  #else
+
+  #ifdef GRAYSCALE
+  p->r = 0.5;
+  p->g = 0.5;
+  p->b = 0.5;
   #else
   p->r = 1.0;
   p->g = 1.0;
   p->b = 1.0;
+  #endif
+
   #endif
 
   for(int t = 0; t < p->num_triangles; ++t)
@@ -337,26 +493,11 @@ int painting_init(s_painting* p, int w, int h)
     GLfloat r = RAND_BETWEEN(0.0, 1.0);
     GLfloat g = RAND_BETWEEN(0.0, 1.0);
     GLfloat b = RAND_BETWEEN(0.0, 1.0);
-    
-    /*
-    float x = RAND_BETWEEN(0.0, 1.0);
-    float y = RAND_BETWEEN(0.0, 1.0);
 
-    // Position 1
-    p->positions.push_back(x);
-    p->positions.push_back(y);
-    // Position 2
-    p->positions.push_back(x + RAND_BETWEEN(-0.1, 0.1));
-    p->positions.push_back(y + RAND_BETWEEN(-0.1, 0.1));
-    // Position 3
-    p->positions.push_back(x + RAND_BETWEEN(-0.1, 0.1));
-    p->positions.push_back(y + RAND_BETWEEN(-0.1, 0.1));
-
-    CLAMP(p->positions[6*t+2], 0.0, 1.0);
-    CLAMP(p->positions[6*t+3], 0.0, 1.0);
-    CLAMP(p->positions[6*t+4], 0.0, 1.0);
-    CLAMP(p->positions[6*t+5], 0.0, 1.0);
-    */
+    #ifdef GRAYSCALE
+    g = r;
+    b = r;
+    #endif
 
     // Position 1
     p->positions.push_back(RAND_BETWEEN(0.0, 1.0));

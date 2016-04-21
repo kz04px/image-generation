@@ -60,7 +60,7 @@ bool compute_shader_load(GLuint* compute_shader, const char* filename)
   std::string compute_source = file_load(filename);
 
   *compute_shader = glCreateShader(GL_COMPUTE_SHADER);
-  
+
   const char *source = compute_source.c_str();
   int length = compute_source.size();
 
@@ -101,6 +101,14 @@ int bmp_load(s_texture* texture, const char *filename)
   // Swap from BGR to RGB
   for(int i = 0; i < image_size; i += 3)
   {
+    // 0.21 R + 0.72 G + 0.07 B.
+    #ifdef GRAYSCALE
+    float gray = 0.07*data[i+0] + 0.72*data[i+1] + 0.21*data[i+2];
+    data[i+0] = gray;
+    data[i+1] = gray;
+    data[i+2] = gray;
+    #endif
+
     unsigned char temp = data[i+0];
     data[i+0] = data[i+2];
     data[i+2] = temp;

@@ -11,6 +11,7 @@ int main()
   srand(time(0));
 
   s_settings settings;
+  settings.mode = MODE_AUTO;
   settings.w = 960;
   settings.h = 480;
   settings.tiled_view = true;
@@ -138,13 +139,15 @@ int main()
   
 
   s_sim sim;
-  sim.generation = 0;
   bmp_load(&sim.target, "input.bmp");
   
-  sim.grid_w = 4;
-  sim.grid_h = 8;
+  sim.grid_pos = 0;
+  sim.grid_w = 8;
+  sim.grid_h = 16;
   sim.tile_w = sim.target.w/sim.grid_w;
   sim.tile_h = sim.target.h/sim.grid_h;
+
+  settings.sim = &sim;
 
   assert(sim.target.w%16 == 0);
   assert(sim.target.h%16 == 0);
@@ -156,6 +159,11 @@ int main()
   {
     sim.paintings.push_back(temp);
     painting_init(&sim.paintings[p], sim.tile_w, sim.tile_h);
+  }
+  for(int p = 0; p < sim.grid_w*sim.grid_h; ++p)
+  {
+    sim.grid_paintings.push_back(temp);
+    painting_init(&sim.grid_paintings[p], sim.tile_w, sim.tile_h);
   }
   
   int num_workgroups = sim.tile_w*sim.tile_h/16/16;
@@ -187,10 +195,44 @@ int main()
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, sim.target.w, sim.target.h, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 4*sim.target.w, 4*sim.target.h, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 
-  std::vector<GLubyte> emptyData(sim.target.w * sim.target.h * 3, 0);
-  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sim.target.w, sim.target.h, GL_RGB, GL_UNSIGNED_BYTE, &emptyData[0]);
+  std::vector<GLubyte> emptyData(sim.target.w * sim.target.h * 3 * 16, 0);
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 4*sim.target.w, 4*sim.target.h, GL_RGB, GL_UNSIGNED_BYTE, &emptyData[0]);
+  
+  
+  GLuint highres_texture_id = 0;
+  glGenTextures(1, &highres_texture_id);
+  glBindTexture(GL_TEXTURE_2D, highres_texture_id);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // GL_LINEAR
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+  glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 4*sim.tile_w, 4*sim.tile_h, 0, GL_RGB, GL_UNSIGNED_BYTE, sim.target.data);
+
+  // create a framebuffer object
+  GLuint highres_fbo = 0;
+  glGenFramebuffers(1, &highres_fbo);
+  glBindFramebuffer(GL_FRAMEBUFFER, highres_fbo);
+  
+  // attach the texture to FBO color attachment point
+  glFramebufferTexture2D(GL_FRAMEBUFFER,        // 1. fbo target: GL_FRAMEBUFFER 
+                         GL_COLOR_ATTACHMENT0,  // 2. attachment point
+                         GL_TEXTURE_2D,         // 3. tex target: GL_TEXTURE_2D
+                         highres_texture_id,    // 4. tex ID
+                         0);                    // 5. mipmap level: 0(base)
+
+  glClearColor(0.0, 0.0, 0.0, 1.0);
+  glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+  
+  glBindTexture(GL_TEXTURE_2D, 0);
+  
+  // check FBO status
+  GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+  if(status != GL_FRAMEBUFFER_COMPLETE)
+  {
+    return -1;
+  }
 
   GLuint texture_slice = 0;
   glGenTextures(1, &texture_slice);
@@ -208,54 +250,127 @@ int main()
   glGenQueries(1, &query);
 
 
-  GLubyte data[3*sim.tile_w*sim.tile_h];
+  GLubyte data[3*sim.tile_w*sim.tile_h*16];
 
   unsigned int parent1_id = 0;
   unsigned int parent2_id = 0;
   float parent1_score = FLT_MIN;
   float parent2_score = FLT_MIN;
 
-  int tile_x = -1;
-  int tile_y = 0;
-
   int x_offset = 0;
   int y_offset = 0;
-
+  int tile_x = 0;
+  int tile_y = 0;
+  int last_grid_pos = -1;
+  int auto_generation = 0;
   while(!glfwWindowShouldClose(window))
   {
     glBeginQuery(GL_TIME_ELAPSED, query);
 
-    if(tile_y >= sim.grid_h)
-    {
-      settings.paused = true;
-    }
-    
     if(settings.paused == false)
     {
-      // Next tile
-      if(1.0 - parent1_score/(3.0*sim.tile_w*sim.tile_h) >= TARGET_PERCENTAGE || sim.generation >= MAX_GEN)
+      // Auto mode will spend a set number of generations per grid position and then move to the new lowest scoring
+      if(settings.mode == MODE_AUTO && auto_generation > 1000)
       {
-        for(unsigned int p = 0; p < sim.paintings.size(); ++p)
+        float lowest = FLT_MAX;
+        for(unsigned int p = 0; p < sim.grid_paintings.size(); ++p)
         {
-          painting_randomise(&sim.paintings[p]);
-        }
-
-        tile_x++;
-        if(tile_x >= sim.grid_w)
-        {
-          tile_x = 0;
-          tile_y++;
-          if(tile_y >= sim.grid_h)
+          if(sim.grid_paintings[p].score < lowest)
           {
-            //break;
+            sim.grid_pos = p;
+            lowest = sim.grid_paintings[p].score;
           }
         }
 
+        auto_generation = 0;
+      }
+
+      // Next tile
+      if(last_grid_pos != sim.grid_pos)
+      {
+        if(last_grid_pos != -1)
+        {
+          // Update results texture - do all grid paintings because new ones might've been loaded in
+          for(unsigned int p = 0; p < sim.grid_paintings.size(); ++p)
+          {
+            if(sim.grid_paintings[p].generation == 0) {continue;}
+
+            tile_x = p%sim.grid_w;
+            tile_y = p/sim.grid_w;
+            
+            x_offset = tile_x * sim.tile_w;
+            y_offset = tile_y * sim.tile_h;
+        
+            // Save current best paiting to the results
+            glViewport(0, 0, 4*sim.tile_w, 4*sim.tile_h);
+
+            // Redraw
+            glBindFramebuffer(GL_FRAMEBUFFER, highres_fbo);
+            glClearColor(sim.grid_paintings[p].r, sim.grid_paintings[p].g, sim.grid_paintings[p].b, 1.0);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            
+            // Bind the current vao
+            glBindVertexArray(vao);
+            
+            // Vertices
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBufferData(GL_ARRAY_BUFFER, 2 * 3 * sim.grid_paintings[p].num_triangles * sizeof(GLfloat), &sim.grid_paintings[p].positions[0], GL_STATIC_DRAW);
+            
+            // Colours
+            glBindBuffer(GL_ARRAY_BUFFER, cbo);
+            glBufferData(GL_ARRAY_BUFFER, 3 * 3 * sim.grid_paintings[p].num_triangles * sizeof(GLfloat), &sim.grid_paintings[p].colours[0], GL_STATIC_DRAW);
+            
+            // Texture coords
+            glBindBuffer(GL_ARRAY_BUFFER, uvbo);
+            glBufferData(GL_ARRAY_BUFFER, 2 * 3 * sim.grid_paintings[p].num_triangles * sizeof(GLfloat), &sim.grid_paintings[p].uvs[0], GL_STATIC_DRAW);
+            
+            glUseProgram(shader_program);
+            
+            // Set the uniforms
+            glm::mat4 view = glm::ortho(0.0, 1.0, 0.0, 1.0, -1.0, 1.0);
+            glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(view));
+            
+            // Draw
+            glDrawArrays(GL_TRIANGLES, 0, 3*sim.grid_paintings[p].num_triangles);
+
+
+            // Get tile data
+            glBindTexture(GL_TEXTURE_2D, highres_texture_id);
+            glGetTexImage(GL_TEXTURE_2D, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+
+            // Write tile to result texture
+            glBindTexture(GL_TEXTURE_2D, sim.result_id);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, 4*x_offset, 4*y_offset, 4*sim.tile_w, 4*sim.tile_h, GL_RGB, GL_UNSIGNED_BYTE, data);
+          }
+
+          glBindFramebuffer(GL_FRAMEBUFFER, 0);
+          glViewport(0, 0, settings.w, settings.h);
+        }
+        
+        
+        // If we've never been at this grid position before, we should start with some random paintings
+        // If we have been here before, just copy the painting in storage
+        if(sim.grid_paintings[sim.grid_pos].generation == 0)
+        {
+          for(unsigned int p = 0; p < sim.paintings.size(); ++p)
+          {
+            painting_randomise(&sim.paintings[p]);
+          }
+        }
+        else
+        {
+          for(unsigned int p = 0; p < sim.paintings.size(); ++p)
+          {
+            painting_copy(&sim.paintings[p], &sim.grid_paintings[sim.grid_pos]);
+          }
+        }
+        
+        tile_x = sim.grid_pos%sim.grid_w;
+        tile_y = sim.grid_pos/sim.grid_w;
+        
         x_offset = tile_x * sim.tile_w;
         y_offset = tile_y * sim.tile_h;
-
-        sim.generation = 0;
-
+        
         for(int y = 0; y < sim.tile_h; ++y)
         {
           for(int x = 0; x < sim.tile_w; ++x)
@@ -268,9 +383,17 @@ int main()
         
         glBindTexture(GL_TEXTURE_2D, texture_slice);
         glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sim.tile_w, sim.tile_h, GL_RGB, GL_UNSIGNED_BYTE, data);
+        
+        std::cout << std::endl;
+        std::cout << "Pos: " << tile_x << " " << tile_y << std::endl;
+        std::cout << "Score: " << sim.grid_paintings[sim.grid_pos].score << std::endl;
+        std::cout << "Gen: " << sim.grid_paintings[sim.grid_pos].generation << std::endl;
+        std::cout << std::endl;
+
+        last_grid_pos = sim.grid_pos;
       }
-
-
+      
+      
       // Draw paintings
       glViewport(0, 0, sim.tile_w, sim.tile_h);
       for(unsigned int p = 0; p < sim.paintings.size(); ++p)
@@ -296,11 +419,11 @@ int main()
         
         glUseProgram(shader_program);
         
-        // set the uniforms
+        // Set the uniforms
         glm::mat4 view = glm::ortho(0.0, 1.0, 0.0, 1.0, -1.0, 1.0);
         glUniformMatrix4fv(0, 1, GL_FALSE, glm::value_ptr(view));
         
-        // draw
+        // Draw
         glDrawArrays(GL_TRIANGLES, 0, 3*sim.paintings[p].num_triangles);
       }
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -318,7 +441,7 @@ int main()
         glActiveTexture(GL_TEXTURE0 + sim.paintings[p].texture_id);
         glBindTexture(GL_TEXTURE_2D, sim.paintings[p].texture_id);
         
-        // setup uniforms
+        // Setup uniforms
         glUniform1i(0, texture_slice);
         glUniform1i(1, sim.paintings[p].texture_id);
         glUniform1i(2, p);
@@ -332,25 +455,26 @@ int main()
         glBindBuffer(GL_SHADER_STORAGE_BUFFER, scores_bo);
         glGetBufferSubData(GL_SHADER_STORAGE_BUFFER, 0, num_workgroups*sizeof(scores[0]), &scores[0]);
 
-        // Calculate score
+        // Calculate similarity percentage
         sim.paintings[p].score = 0.0;
         for(int n = 0; n < num_workgroups; ++n)
         {
           sim.paintings[p].score += scores[n];
         }
+        sim.paintings[p].score = 1.0 - sim.paintings[p].score/(3*sim.tile_w*sim.tile_h);
       }
       glActiveTexture(GL_TEXTURE0);
       
       
       // Find best painting
       parent1_id = sim.paintings.size();
-      parent1_score = FLT_MAX;
+      parent1_score = FLT_MIN;
       parent2_id = sim.paintings.size();
-      parent2_score = FLT_MAX;
+      parent2_score = FLT_MIN;
 
       for(unsigned int p = 0; p < sim.paintings.size(); ++p)
       {
-        if(sim.paintings[p].score <= parent1_score)
+        if(sim.paintings[p].score >= parent1_score)
         {
           parent2_id = parent1_id;
           parent2_score = parent1_score;
@@ -359,7 +483,7 @@ int main()
           parent1_score = sim.paintings[p].score;
           continue;
         }
-        if(sim.paintings[p].score <= parent2_score)
+        if(sim.paintings[p].score >= parent2_score)
         {
           parent2_id = p;
           parent2_score = sim.paintings[p].score;
@@ -396,25 +520,26 @@ int main()
       
 
       // Print scores occasionally
-      if(sim.generation%250 == 0)
+      if(sim.grid_paintings[sim.grid_pos].generation%250 == 0)
       {
-        std::cout << "Gen " << sim.generation << ": " << parent1_id << " - " << (1.0 - parent1_score/(3 * sim.tile_w * sim.tile_h))*100.0 << "%" << std::endl;
+        std::cout << "Gen " << sim.grid_paintings[sim.grid_pos].generation << ": " << parent1_id << " - " << sim.grid_paintings[sim.grid_pos].score*100.0 << "%" << std::endl;
+      }
+
+
+      // Save best painting if it's an improvement
+      if(sim.paintings[parent1_id].score > sim.grid_paintings[sim.grid_pos].score)
+      {
+        int temp = sim.grid_paintings[sim.grid_pos].generation;
+        painting_copy(&sim.grid_paintings[sim.grid_pos], &sim.paintings[parent1_id]);
+        sim.grid_paintings[sim.grid_pos].generation = temp;
       }
       
 
-      sim.generation++;
-
-
-      // Save to result texture
-      if(1.0 - parent1_score/(3.0*sim.tile_w*sim.tile_h) >= TARGET_PERCENTAGE || sim.generation >= MAX_GEN)
+      // Count generations
+      sim.grid_paintings[sim.grid_pos].generation++;
+      if(settings.mode == MODE_AUTO)
       {
-        // Get tile data
-        glBindTexture(GL_TEXTURE_2D, sim.paintings[parent1_id].texture_id);
-        glGetTexImage(GL_TEXTURE_2D, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
-
-        // Write tile to result texture
-        glBindTexture(GL_TEXTURE_2D, sim.result_id);
-        glTexSubImage2D(GL_TEXTURE_2D, 0, x_offset, y_offset, sim.tile_w, sim.tile_h, GL_RGB, GL_UNSIGNED_BYTE, data);
+        auto_generation++;
       }
     }
 
@@ -527,6 +652,7 @@ int main()
 
     glfwSwapBuffers(window);
     
+
     // check for errors
     GLenum error = glGetError();
     if(error != GL_NO_ERROR)
@@ -534,6 +660,7 @@ int main()
       std::cout << "Error: " << error << std::endl;
     }
     
+
     // FPS
     glEndQuery(GL_TIME_ELAPSED);
     GLuint64 result;
@@ -541,6 +668,7 @@ int main()
     std::stringstream tmp;
     tmp << "Painting Evolution: " << int(1e9/result) << " FPS";
     glfwSetWindowTitle(window, tmp.str().c_str());
+
 
     glfwPollEvents();
   }
