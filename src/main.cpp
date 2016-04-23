@@ -143,9 +143,17 @@ int main()
   
   sim.grid_pos = 0;
   sim.grid_w = 8;
-  sim.grid_h = 16;
+  sim.grid_h = 8;
   sim.tile_w = sim.target.w/sim.grid_w;
   sim.tile_h = sim.target.h/sim.grid_h;
+
+  /*
+  if(sim.grid_w*sim.grid_h >= GL_MAX_TEXTURE_UNITS)
+  {
+    std::cout << "Uh oh" << std::endl;
+    getchar();
+  }
+  */
 
   settings.sim = &sim;
 
@@ -155,7 +163,7 @@ int main()
   assert(sim.tile_h%16 == 0);
   
   s_painting temp;
-  for(int p = 0; p < 36; ++p)
+  for(int p = 0; p < 64; ++p)
   {
     sim.paintings.push_back(temp);
     painting_init(&sim.paintings[p], sim.tile_w, sim.tile_h);
@@ -208,7 +216,7 @@ int main()
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 4*sim.tile_w, 4*sim.tile_h, 0, GL_RGB, GL_UNSIGNED_BYTE, sim.target.data);
+  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 4*sim.tile_w, 4*sim.tile_h, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 
   // create a framebuffer object
   GLuint highres_fbo = 0;
@@ -231,6 +239,7 @@ int main()
   GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
   if(status != GL_FRAMEBUFFER_COMPLETE)
   {
+    std::cout << "Framebuffer error:" << status<< std::endl;
     return -1;
   }
 
@@ -250,7 +259,8 @@ int main()
   glGenQueries(1, &query);
 
 
-  GLubyte data[3*sim.tile_w*sim.tile_h*16];
+  GLubyte *data = new GLubyte[3*sim.tile_w*sim.tile_h*16];
+  //GLubyte data[3*sim.tile_w*sim.tile_h*16];
 
   unsigned int parent1_id = 0;
   unsigned int parent2_id = 0;
@@ -263,6 +273,8 @@ int main()
   int tile_y = 0;
   int last_grid_pos = -1;
   int auto_generation = 0;
+  float start_score = 0.0;
+
   while(!glfwWindowShouldClose(window))
   {
     glBeginQuery(GL_TIME_ELAPSED, query);
@@ -270,18 +282,25 @@ int main()
     if(settings.paused == false)
     {
       // Auto mode will spend a set number of generations per grid position and then move to the new lowest scoring
-      if(settings.mode == MODE_AUTO && auto_generation > 1000)
+      if(settings.mode == MODE_AUTO && auto_generation >= AUTO_GENERATIONS)
       {
-        float lowest = FLT_MAX;
+        // Set score rate
+        sim.grid_paintings[sim.grid_pos].score_rate = (sim.grid_paintings[sim.grid_pos].score - start_score)/AUTO_GENERATIONS;
+
+        assert(sim.grid_paintings[sim.grid_pos].score_rate >= 0.0);
+        assert(sim.grid_paintings[sim.grid_pos].score_rate <= 1.0/AUTO_GENERATIONS);
+
+        float fastest = FLT_MIN;
         for(unsigned int p = 0; p < sim.grid_paintings.size(); ++p)
         {
-          if(sim.grid_paintings[p].score < lowest)
+          if(sim.grid_paintings[p].score_rate > fastest)
           {
             sim.grid_pos = p;
-            lowest = sim.grid_paintings[p].score;
+            fastest = sim.grid_paintings[p].score_rate;
           }
         }
 
+        start_score = sim.grid_paintings[sim.grid_pos].score;
         auto_generation = 0;
       }
 
@@ -387,6 +406,7 @@ int main()
         std::cout << std::endl;
         std::cout << "Pos: " << tile_x << " " << tile_y << std::endl;
         std::cout << "Score: " << sim.grid_paintings[sim.grid_pos].score << std::endl;
+        std::cout << "Rate: " << sim.grid_paintings[sim.grid_pos].score_rate << std::endl;
         std::cout << "Gen: " << sim.grid_paintings[sim.grid_pos].generation << std::endl;
         std::cout << std::endl;
 
@@ -434,21 +454,22 @@ int main()
       for(unsigned int p = 0; p < sim.paintings.size(); ++p)
       {
         glUseProgram(similarity_program);
-        
+
         glActiveTexture(GL_TEXTURE0 + texture_slice);
         glBindTexture(GL_TEXTURE_2D, texture_slice);
-        
+
         glActiveTexture(GL_TEXTURE0 + sim.paintings[p].texture_id);
         glBindTexture(GL_TEXTURE_2D, sim.paintings[p].texture_id);
-        
+
         // Setup uniforms
         glUniform1i(0, texture_slice);
         glUniform1i(1, sim.paintings[p].texture_id);
         glUniform1i(2, p);
-
+    
         // Compute
         int groups_x = sim.tile_w/16;
         int groups_y = sim.tile_h/16;
+    
         glDispatchCompute(groups_x, groups_y, 1);
 
         // Get scores
@@ -522,7 +543,8 @@ int main()
       // Print scores occasionally
       if(sim.grid_paintings[sim.grid_pos].generation%250 == 0)
       {
-        std::cout << "Gen " << sim.grid_paintings[sim.grid_pos].generation << ": " << parent1_id << " - " << sim.grid_paintings[sim.grid_pos].score*100.0 << "%" << std::endl;
+        //std::cout << "Gen " << sim.grid_paintings[sim.grid_pos].generation << ": " << parent1_id << " - " << sim.grid_paintings[sim.grid_pos].score*100.0 << "% " << std::endl;
+        //std::cout << "Gen " << sim.grid_paintings[sim.grid_pos].generation << ": " << parent1_id << " - " << sim.grid_paintings[sim.grid_pos].score*100.0 << "% " << sim.grid_paintings[sim.grid_pos].score_rate << std::endl;
       }
 
 
@@ -659,7 +681,7 @@ int main()
     {
       std::cout << "Error: " << error << std::endl;
     }
-    
+
 
     // FPS
     glEndQuery(GL_TIME_ELAPSED);
@@ -672,6 +694,8 @@ int main()
 
     glfwPollEvents();
   }
+
+  delete[] data;
 
   // delete the created objects
   glDeleteVertexArrays(1, &vao);

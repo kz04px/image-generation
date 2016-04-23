@@ -50,7 +50,8 @@ void glfw_keyboard_callback(GLFWwindow* window, int key, int scancode, int actio
       break;
     case GLFW_KEY_F2:
       //bmp_save_n(1, "test1.bmp");
-      bmp_save_n(settings->best_painting, "result.bmp");
+      //bmp_save_n(settings->best_painting, "result.bmp");
+      bmp_save_n(settings->sim->result_id, "result.bmp");
       break;
     case GLFW_KEY_F5:
       std::cout << "Saving" << std::endl;

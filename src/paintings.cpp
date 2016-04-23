@@ -33,6 +33,10 @@ int paintings_load(s_sim *sim, const char *filename)
     {
       sim->grid_paintings[p].score = atof(value);
     }
+    else if(strncmp(setting, "Rate:", 5) == 0)
+    {
+      sim->grid_paintings[p].score_rate = atof(value);
+    }
     else if(strncmp(setting, "Generation:", 11) == 0)
     {
       sim->grid_paintings[p].generation = atoi(value);
@@ -100,6 +104,7 @@ int paintings_save(s_sim *sim, const char *filename)
   {
     fprintf(file, "Painting: %i\n", p);
     fprintf(file, "Score: %f\n", sim->grid_paintings[p].score);
+    fprintf(file, "Rate: %f\n", sim->grid_paintings[p].score_rate);
     fprintf(file, "Generation: %i\n", sim->grid_paintings[p].generation);
     fprintf(file, "r: %f\n", sim->grid_paintings[p].r);
     fprintf(file, "g: %f\n", sim->grid_paintings[p].g);
@@ -385,6 +390,7 @@ int painting_copy(s_painting* dest, s_painting* src)
   dest->num_triangles = src->num_triangles;
   dest->generation = src->generation;
   dest->score = src->score;
+  dest->score_rate = src->score_rate;
 
   dest->r = src->r;
   dest->g = src->g;
@@ -461,8 +467,9 @@ int painting_init(s_painting* p, int w, int h)
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   
   p->generation = 0;
-  p->num_triangles = 32;
+  p->num_triangles = 128;
   p->score = 0.0;
+  p->score_rate = FLT_MAX;
   
   #ifdef BACKGROUNDS
   p->r = RAND_BETWEEN(0.0, 1.0);

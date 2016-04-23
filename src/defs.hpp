@@ -24,10 +24,10 @@
 #define MODE_AUTO   0
 #define MODE_MANUAL 1
 
-#define TARGET_PERCENTAGE 0.975
+#define AUTO_GENERATIONS 100.0
 #define MIN_GEN 1000
 #define MAX_GEN 10000
-#define GRAYSCALE
+//#define GRAYSCALE
 //#define BACKGROUNDS
 
 typedef struct
@@ -50,6 +50,7 @@ typedef struct
   
   int num_triangles;
   float score;
+  float score_rate;
   std::vector<GLfloat> positions;
   std::vector<GLfloat> colours;
   std::vector<GLfloat> uvs;
