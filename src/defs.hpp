@@ -27,7 +27,7 @@
 #define AUTO_GENERATIONS 100.0
 #define MIN_GEN 1000
 #define MAX_GEN 10000
-//#define GRAYSCALE
+#define GRAYSCALE
 //#define BACKGROUNDS
 
 typedef struct

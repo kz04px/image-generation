@@ -147,14 +147,6 @@ int main()
   sim.tile_w = sim.target.w/sim.grid_w;
   sim.tile_h = sim.target.h/sim.grid_h;
 
-  /*
-  if(sim.grid_w*sim.grid_h >= GL_MAX_TEXTURE_UNITS)
-  {
-    std::cout << "Uh oh" << std::endl;
-    getchar();
-  }
-  */
-
   settings.sim = &sim;
 
   assert(sim.target.w%16 == 0);
@@ -163,7 +155,7 @@ int main()
   assert(sim.tile_h%16 == 0);
   
   s_painting temp;
-  for(int p = 0; p < 64; ++p)
+  for(int p = 0; p < 36; ++p)
   {
     sim.paintings.push_back(temp);
     painting_init(&sim.paintings[p], sim.tile_w, sim.tile_h);
@@ -188,13 +180,13 @@ int main()
   glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, scores_bo);
   glBufferData(GL_SHADER_STORAGE_BUFFER, num_workgroups*sizeof(scores[0]), &scores[0], GL_DYNAMIC_DRAW); // GL_STATIC_DRAW
   
-  
   glGenTextures(1, &sim.target_id);
   glBindTexture(GL_TEXTURE_2D, sim.target_id);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST); // GL_LINEAR
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
   glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, sim.target.w, sim.target.h, 0, GL_RGB, GL_UNSIGNED_BYTE, sim.target.data);
 
   glGenTextures(1, &sim.result_id);
@@ -203,10 +195,10 @@ int main()
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 4*sim.target.w, 4*sim.target.h, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, sim.target.w, sim.target.h, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 
-  std::vector<GLubyte> emptyData(sim.target.w * sim.target.h * 3 * 16, 0);
-  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 4*sim.target.w, 4*sim.target.h, GL_RGB, GL_UNSIGNED_BYTE, &emptyData[0]);
+  std::vector<GLubyte> emptyData(3 * sim.target.w * sim.target.h, 0);
+  glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, sim.target.w, sim.target.h, GL_RGB, GL_UNSIGNED_BYTE, &emptyData[0]);
   
   
   GLuint highres_texture_id = 0;
@@ -216,7 +208,7 @@ int main()
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST); // GL_LINEAR
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, 4*sim.tile_w, 4*sim.tile_h, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+  glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, sim.tile_w, sim.tile_h, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
 
   // create a framebuffer object
   GLuint highres_fbo = 0;
@@ -252,6 +244,7 @@ int main()
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
   glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
   glTexImage2D(GL_TEXTURE_2D, 0,GL_RGB, sim.tile_w, sim.tile_h, 0, GL_RGB, GL_UNSIGNED_BYTE, 0);
+  glBindTexture(GL_TEXTURE_2D, 0);
 
   glPointSize(2.0);
 
@@ -259,8 +252,7 @@ int main()
   glGenQueries(1, &query);
 
 
-  GLubyte *data = new GLubyte[3*sim.tile_w*sim.tile_h*16];
-  //GLubyte data[3*sim.tile_w*sim.tile_h*16];
+  GLubyte *data = new GLubyte[3*sim.tile_w*sim.tile_h];
 
   unsigned int parent1_id = 0;
   unsigned int parent2_id = 0;
@@ -321,7 +313,7 @@ int main()
             y_offset = tile_y * sim.tile_h;
         
             // Save current best paiting to the results
-            glViewport(0, 0, 4*sim.tile_w, 4*sim.tile_h);
+            glViewport(0, 0, sim.tile_w, sim.tile_h);
 
             // Redraw
             glBindFramebuffer(GL_FRAMEBUFFER, highres_fbo);
@@ -359,7 +351,7 @@ int main()
 
             // Write tile to result texture
             glBindTexture(GL_TEXTURE_2D, sim.result_id);
-            glTexSubImage2D(GL_TEXTURE_2D, 0, 4*x_offset, 4*y_offset, 4*sim.tile_w, 4*sim.tile_h, GL_RGB, GL_UNSIGNED_BYTE, data);
+            glTexSubImage2D(GL_TEXTURE_2D, 0, x_offset, y_offset, sim.tile_w, sim.tile_h, GL_RGB, GL_UNSIGNED_BYTE, data);
           }
 
           glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -449,7 +441,6 @@ int main()
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
       glViewport(0, 0, settings.w, settings.h);
 
-
       // Comparisons
       for(unsigned int p = 0; p < sim.paintings.size(); ++p)
       {
@@ -485,7 +476,6 @@ int main()
         sim.paintings[p].score = 1.0 - sim.paintings[p].score/(3*sim.tile_w*sim.tile_h);
       }
       glActiveTexture(GL_TEXTURE0);
-      
       
       // Find best painting
       parent1_id = sim.paintings.size();
@@ -681,7 +671,6 @@ int main()
     {
       std::cout << "Error: " << error << std::endl;
     }
-
 
     // FPS
     glEndQuery(GL_TIME_ELAPSED);

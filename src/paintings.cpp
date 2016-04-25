@@ -238,7 +238,8 @@ int painting_jiggle(s_painting* p)
     p->colours[9*t+7] = dg;
     p->colours[9*t+8] = db;
   }
-  else if(rand()%3 == 0)
+  //else if(rand()%3 == 0)
+  else
   {
     GLfloat dr = RAND_BETWEEN(-MUTATE_RATE_COL, MUTATE_RATE_COL);
     GLfloat dg = RAND_BETWEEN(-MUTATE_RATE_COL, MUTATE_RATE_COL);
@@ -467,7 +468,7 @@ int painting_init(s_painting* p, int w, int h)
   glBindFramebuffer(GL_FRAMEBUFFER, 0);
   
   p->generation = 0;
-  p->num_triangles = 128;
+  p->num_triangles = 64;
   p->score = 0.0;
   p->score_rate = FLT_MAX;
   

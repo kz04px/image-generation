@@ -89,19 +89,40 @@ int bmp_load(s_texture* texture, const char *filename)
   int w      = *(int*)&(header[0x12]);
   int h     = *(int*)&(header[0x16]);
   //int bpp        = *(int*)&(header[0x1C]); // bits per pixel
+  int bpp = 24;
+  int row_size = int((bpp*w+31)/32)*4;
+  int padding = row_size - 3*w;
+
+  assert(0 <= padding && padding <= 3);
 
   if(image_size == 0) {image_size = 3*w*h;}
   if(data_pos == 0) {data_pos = 54;}
+  //fseek(file, data_pos);
 
-  unsigned char* data = new unsigned char[image_size * sizeof(*data)];
+  unsigned char* data = new unsigned char[3 * w * h * 2];
   if(data == NULL) {fclose(file); return -5;}
-  int r = fread(data, 1, image_size, file);
-  if(r != image_size) {fclose(file); return -6;}
   
-  // Swap from BGR to RGB
-  for(int i = 0; i < image_size; i += 3)
+  unsigned char junk[3];
+
+  int total = 0;
+
+  //int r = fread(data, 1, 3 * w * h, file);
+  for(int y = 0; y < h; ++y)
   {
-    // 0.21 R + 0.72 G + 0.07 B.
+    total += fread(data + y*3*w, sizeof(*data), 3*w, file);
+    if(padding != 0)
+    {
+      fread(junk, sizeof(*junk), padding, file);
+    }
+  }
+
+  assert((3*w+padding)*h == image_size);
+  assert(ftell(file) == 54 + image_size);
+
+  // Swap from BGR to RGB
+  for(int i = 0; i < 3 * w * h; i += 3)
+  {
+    // 0.21R + 0.72G + 0.07B
     #ifdef GRAYSCALE
     float gray = 0.07*data[i+0] + 0.72*data[i+1] + 0.21*data[i+2];
     data[i+0] = gray;
@@ -113,7 +134,7 @@ int bmp_load(s_texture* texture, const char *filename)
     data[i+0] = data[i+2];
     data[i+2] = temp;
   }
-  
+
   fclose(file);
 
   texture->w = w;
@@ -128,7 +149,7 @@ int bmp_save_n(int n, const char *filename)
   assert(filename != NULL);
   assert(n >= 0);
 
-  FILE *file = fopen(filename, "w");
+  FILE *file = fopen(filename, "wb");
   if(file == NULL) {return -1;}
 
   glActiveTexture(GL_TEXTURE0 + n);
@@ -144,29 +165,20 @@ int bmp_save_n(int n, const char *filename)
   assert(height != -1);
 
   unsigned char header[54] = {0};
-  GLubyte *data = new GLubyte[3*width*height];
+  GLubyte *data = new GLubyte[3*width*height*2]();
+  if(data == NULL) {return -1;}
 
-  int size = 54*sizeof(*header) + 3*width*height*sizeof(*data); // Total size of file in bytes
   int bpp = 24;
-  int bitmap_size = 3*width*height*sizeof(*data);
+  int row_size = int((bpp*width+31)/32)*4;
+  int padding = row_size - 3*width;
+
+  assert(0 <= padding && padding <= 3);
+
+  int bitmap_size = (3*width+padding)*height*sizeof(*data);
+  int size = 54*sizeof(*header) + bitmap_size; // Total size of file in bytes
+  GLubyte empty[3] = {0x01, 0x01, 0x01};
 
   // Header data
-  /*
-  header[0] = 'B';
-  header[1] = 'M';
-  header[2] = size;
-  header[3] = size>>8;
-  header[4] = size>>16;
-  header[5] = size>>24;
-  header[10] = 54;         // Offset to image data
-  header[14] = 40;         // Size of DIB header
-  header[18] = width;      // Width
-  header[19] = width>>8;   // Width
-  header[20] = height;     // Height
-  header[21] = height>>8;  // Height
-  header[22] = 1;          // Number of colour planes
-  header[24] = bpp;        // Bits Per Pixel (bpp)
-  */
   header[0x0] = 'B';
   header[0x1] = 'M';
   header[0x2] = size;
@@ -192,41 +204,27 @@ int bmp_save_n(int n, const char *filename)
   header[0x23] = bitmap_size>>8;  // 
   header[0x24] = bitmap_size>>16; // 
   header[0x25] = bitmap_size>>24; // 
+  header[0x26] = 0xC4;
+  header[0x27] = 0x0E;
+  header[0x2A] = 0xC4;
+  header[0x2B] = 0x0E;
 
   // Pixel data
   glGetTexImage(GL_TEXTURE_2D, 0, GL_BGR, GL_UNSIGNED_BYTE, data);
+
   fwrite(header, sizeof(*header), 54, file);
-  //fwrite(data, sizeof(*data), 3*width*height, file);
-
-  int row_size = int((bpp*width+31)/32)*4;
-  //int padding[row_size - 3*width] = {0};
-
-  std::cout << "Row size: " << row_size << std::endl;
-  std::cout << "mod 4:    " << row_size%4 << std::endl;
-  std::cout << "size:     " << 3*width << std::endl;
-
-  //GLubyte empty[4] = {0, 0, 0, 0};
-
-  std::cout << "Hmm:" << 3*width*height << std::endl;
-
-  std::cout << "Lul:" << std::endl;
+  
   for(int y = 0; y < height; ++y)
   {
-    if(y < 10)
-    {
-      std::cout << y*(3*width) << std::endl;
-      fwrite(data, sizeof(*data), 3*width, file);
-    }
-    else
-    {
-      fwrite(data + y*(3*width), sizeof(*data), 3*width, file);
-    }
+    fwrite(data + y*3*width, sizeof(*data), 3*width, file);
 
-    //fwrite(data, sizeof(*data), 3*width, file);
-    //fwrite(data + y*(3*width), sizeof(*data), 3*width, file);
-    //fwrite(empty, sizeof(*empty), 2, file);
-    //fwrite(padding, sizeof(*data), row_size - 3*width, file);
+    if(padding > 0)
+    {
+      fwrite(empty, sizeof(*empty), padding, file);
+    }
   }
+
+  assert(ftell(file) == 54 + (3*width+padding)*height);
 
   delete[] data;
   fclose(file);
