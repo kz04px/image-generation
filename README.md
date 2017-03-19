@@ -5,9 +5,11 @@ About:
 
 Using:
 - OpenGL 4
+- GLFW
 
 Platforms:
 - Windows
+- Linux
 
 Controls:
  WASD - Change current grid to render
@@ -19,3 +21,7 @@ Controls:
     T - Print results
 Enter - View the current generation or overall picture
 Space - Toggle pause
+
+Example images:
+![Image Generator Example 1](/images/image_0001.png)
+![Image Generator Example 2](/images/image_0002.png)
